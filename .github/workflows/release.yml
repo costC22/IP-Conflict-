@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Baixar código-fonte
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Compilar e validar
         shell: powershell
@@ -34,3 +34,4 @@ jobs:
             dist\IPConflictMonitor-Windows.zip `
             dist\IPConflictMonitor.exe.sha256 `
             dist\IPConflictMonitor-dashboard.png
+
