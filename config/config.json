@@ -1,0 +1,46 @@
+{
+  "Network": {
+    "CIDR": "",
+    "InterfaceIndex": 0,
+    "MaxHosts": 4094,
+    "ExcludedIPs": [],
+    "ExcludedMACs": [],
+    "TrustedPairs": []
+  },
+  "Monitoring": {
+    "Continuous": true,
+    "IntervalSeconds": 15,
+    "CaptureSeconds": 8,
+    "CaptureWarmupMilliseconds": 600,
+    "EvidenceWindowMinutes": 10,
+    "HistoryExpirationMinutes": 120,
+    "MinObservationsPerMac": 2,
+    "MinMacTransitions": 2,
+    "AlertCooldownMinutes": 10,
+    "PingSweepEnabled": true,
+    "MaxConcurrentPings": 48,
+    "PingTimeoutMs": 400,
+    "ResolveHostnames": true,
+    "HostnameTimeoutMs": 750,
+    "PacketCaptureEnabled": true,
+    "ActiveArpProbeEnabled": true,
+    "ActiveArpProbeRounds": 2,
+    "ActiveArpProbeDelayMs": 250
+  },
+  "Integrations": {
+    "TSharkPath": "",
+    "DhcpServer": "",
+    "OuiDatabasePath": "",
+    "WebhookUrl": "",
+    "WebhookEnabled": false,
+    "WindowsEventLogEnabled": false
+  },
+  "Output": {
+    "Directory": "%LOCALAPPDATA%\\IPConflictMonitor",
+    "LogMaxMB": 10,
+    "LogRetentionFiles": 7,
+    "SnapshotCsv": true,
+    "ConflictCsv": true,
+    "JsonState": true
+  }
+}
