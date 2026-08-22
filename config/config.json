@@ -5,17 +5,17 @@
     "MaxHosts": 4094,
     "ExcludedIPs": [],
     "ExcludedMACs": [],
-    "TrustedPairs": []
+    "TrustedPairs": [],
+    "TrustedVirtualIps": [],
+    "TrustedMacs": []
   },
   "Monitoring": {
     "Continuous": true,
     "IntervalSeconds": 15,
-    "CaptureSeconds": 8,
-    "CaptureWarmupMilliseconds": 600,
+    "CaptureSeconds": 5,
+    "CaptureWarmupMilliseconds": 500,
     "EvidenceWindowMinutes": 10,
     "HistoryExpirationMinutes": 120,
-    "MinObservationsPerMac": 2,
-    "MinMacTransitions": 2,
     "AlertCooldownMinutes": 10,
     "PingSweepEnabled": true,
     "MaxConcurrentPings": 48,
@@ -24,8 +24,18 @@
     "HostnameTimeoutMs": 750,
     "PacketCaptureEnabled": true,
     "ActiveArpProbeEnabled": true,
-    "ActiveArpProbeRounds": 2,
-    "ActiveArpProbeDelayMs": 250
+    "DetectionMode": "StrictEvidence",
+    "VerificationRounds": 3,
+    "RequiredPositiveRounds": 2,
+    "RequiredConfirmedCycles": 2,
+    "ArpResponseWindowMs": 1500,
+    "RequireCapturedArpRequest": true,
+    "RequireCorrelatedArpResponses": true,
+    "FailClosedWithoutCapture": true,
+    "DetectProxyArp": true,
+    "ProxyArpIpThreshold": 4,
+    "MaxConcurrentVerifications": 1,
+    "ArpProbeRateLimitMs": 250
   },
   "Integrations": {
     "TSharkPath": "",

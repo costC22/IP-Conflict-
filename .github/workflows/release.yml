@@ -1,4 +1,4 @@
-name: Publicar versão Windows
+name: Strict Evidence — testar e publicar Windows
 
 on:
   push:
@@ -9,17 +9,26 @@ permissions:
   contents: write
 
 jobs:
-  build-release:
+  strict-detection-tests:
     runs-on: windows-latest
     steps:
       - name: Baixar código-fonte
         uses: actions/checkout@v7.0.1
 
-      - name: Compilar e validar
+      - name: Build gate, self-test e pacote
         shell: powershell
         run: .\Build-Executable.ps1
 
-      - name: Publicar artefatos da tag
+      - name: Pester e regression gate
+        shell: powershell
+        run: |
+          Import-Module Pester
+          $result = Invoke-Pester -Path .\tests -PassThru
+          if ($result.FailedCount -gt 0) {
+            throw "$($result.FailedCount) teste(s) falharam. Release bloqueada."
+          }
+
+      - name: Publicar artefatos aprovados
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
@@ -27,11 +36,10 @@ jobs:
           $tag = '${{ github.ref_name }}'
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title "IPConflictMonitor $($tag.TrimStart('v'))" --generate-notes
+            gh release create $tag --title "IPConflictMonitor $($tag.TrimStart('v')) — Strict Evidence Detection" --generate-notes
           }
           gh release upload $tag --clobber `
             dist\IPConflictMonitor.exe `
             dist\IPConflictMonitor-Windows.zip `
             dist\IPConflictMonitor.exe.sha256 `
             dist\IPConflictMonitor-dashboard.png
-
