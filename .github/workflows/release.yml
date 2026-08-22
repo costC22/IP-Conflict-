@@ -1,12 +1,15 @@
 name: Strict Evidence — testar e publicar Windows
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     tags:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   strict-detection-tests:
@@ -28,18 +31,43 @@ jobs:
             throw "$($result.FailedCount) teste(s) falharam. Release bloqueada."
           }
 
-      - name: Publicar artefatos aprovados
+      - name: Guardar artefatos aprovados
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          if-no-files-found: error
+          path: |
+            dist/IPConflictMonitor.exe
+            dist/IPConflictMonitor-Windows.zip
+            dist/IPConflictMonitor.exe.sha256
+            dist/IPConflictMonitor-dashboard.png
+
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: strict-detection-tests
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Baixar artefatos aprovados
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets
+
+      - name: Publicar release aprovada
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = '${{ github.ref_name }}'
-          gh release view $tag 2>$null
+          gh release view $tag --repo '${{ github.repository }}' 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title "IPConflictMonitor $($tag.TrimStart('v')) — Strict Evidence Detection" --generate-notes
+            gh release create $tag --repo '${{ github.repository }}' --title "IPConflictMonitor $($tag.TrimStart('v')) — Strict Evidence Detection" --generate-notes
           }
-          gh release upload $tag --clobber `
-            dist\IPConflictMonitor.exe `
-            dist\IPConflictMonitor-Windows.zip `
-            dist\IPConflictMonitor.exe.sha256 `
-            dist\IPConflictMonitor-dashboard.png
+          gh release upload $tag --repo '${{ github.repository }}' --clobber `
+            release-assets\IPConflictMonitor.exe `
+            release-assets\IPConflictMonitor-Windows.zip `
+            release-assets\IPConflictMonitor.exe.sha256 `
+            release-assets\IPConflictMonitor-dashboard.png
