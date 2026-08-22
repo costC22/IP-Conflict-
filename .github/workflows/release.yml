@@ -64,7 +64,7 @@ jobs:
           $tag = '${{ github.ref_name }}'
           gh release view $tag --repo '${{ github.repository }}' 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --repo '${{ github.repository }}' --title "IPConflictMonitor $($tag.TrimStart('v')) — Strict Evidence Detection" --generate-notes
+            gh release create $tag --repo '${{ github.repository }}' --title "IPConflictMonitor $($tag.TrimStart('v')) - Strict Evidence Detection" --generate-notes
           }
           gh release upload $tag --repo '${{ github.repository }}' --clobber `
             release-assets\IPConflictMonitor.exe `
