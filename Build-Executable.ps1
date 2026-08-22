@@ -97,7 +97,7 @@ if ($LASTEXITCODE -ne 0) { throw "Validacao de configuracao falhou com codigo $L
 $help = & $exe -Help | Out-String
 $status = & $exe -Status | Out-String
 if ($help -notmatch 'Strict Evidence Detection' -or $status -notmatch 'fail-closed') { throw 'O executavel nao confirmou a politica Strict Evidence.' }
-if ((Get-Item -LiteralPath $exe).VersionInfo.FileVersion -ne '3.2.1.0') { throw 'A versao compilada nao e 3.2.1.0.' }
+if ((Get-Item -LiteralPath $exe).VersionInfo.FileVersion -ne '3.2.2.0') { throw 'A versao compilada nao e 3.2.2.0.' }
 
 $assembly = [Reflection.Assembly]::Load([IO.File]::ReadAllBytes($exe))
 $resources = $assembly.GetManifestResourceNames()

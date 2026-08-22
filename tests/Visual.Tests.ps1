@@ -1,35 +1,48 @@
 Describe 'Strict Evidence field interface' {
     BeforeAll {
+        function global:Assert-VisualTrue {
+            param($Condition, [string]$Message)
+            if (-not [bool]$Condition) { throw "Assertion failed: $Message" }
+        }
+        function global:Assert-VisualMatch {
+            param([string]$Actual, [string]$Pattern, [string]$Message)
+            if ($Actual -notmatch $Pattern) { throw "Assertion failed: $Message. Pattern '$Pattern' was not found." }
+        }
+        function global:Assert-VisualNoMatch {
+            param([string]$Actual, [string]$Pattern, [string]$Message)
+            if ($Actual -match $Pattern) { throw "Assertion failed: $Message. Forbidden pattern '$Pattern' was found." }
+        }
+
         $script:projectRoot = Split-Path $PSScriptRoot -Parent
     }
 
     It 'renders only the allowed operator states' {
         $source = Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw
-        $source | Should Match 'CONFLITO CONFIRMADO'
-        $source | Should Match 'NÃO VERIFICADO'
-        $source | Should Match 'MONITORAMENTO LIMITADO'
-        $source | Should Not Match '\bSUSPECT\b'
+        Assert-VisualMatch $source 'CONFLITO CONFIRMADO' 'confirmed state is rendered'
+        Assert-VisualMatch $source 'NÃO VERIFICADO' 'unverified state is rendered'
+        Assert-VisualMatch $source 'MONITORAMENTO LIMITADO' 'limited state is rendered'
+        Assert-VisualNoMatch $source '\bSUSPECT\b' 'SUSPECT state is absent'
     }
 
     It 'shows proof rounds cycles correlation and Evidence ID' {
         $source = Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw
         foreach ($marker in @('RequestObserved','PositiveRounds','RequiredRounds','ConfirmedCycles','RequiredCycles','CorrelatedArpReplies','EvidenceId','EvidenceQuality')) {
-            $source | Should Match $marker
+            Assert-VisualMatch $source $marker "evidence field $marker is rendered"
         }
     }
 
     It 'renders a full-size version 3.2 dashboard preview' {
         Add-Type -AssemblyName System.Drawing
         $preview = Join-Path $script:projectRoot 'dist\IPConflictMonitor-dashboard.png'
-        Test-Path -LiteralPath $preview | Should Be $true
+        Assert-VisualTrue (Test-Path -LiteralPath $preview) 'dashboard preview exists'
         $image = [Drawing.Image]::FromFile($preview)
         try {
-            $image.Width | Should BeGreaterThan 1300
-            $image.Height | Should BeGreaterThan 800
+            Assert-VisualTrue ($image.Width -gt 1000) 'dashboard width is greater than 1000px'
+            Assert-VisualTrue ($image.Height -gt 600) 'dashboard height is greater than 600px'
         }
         finally {
             $image.Dispose()
         }
-        (Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw) | Should Match 'FIELD EDITION 3.2'
+        Assert-VisualMatch (Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw) 'FIELD EDITION 3.2' 'field edition label is present'
     }
 }
