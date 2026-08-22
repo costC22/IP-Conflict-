@@ -1,65 +1,124 @@
-# IPConflictMonitor 3.1 — Field Edition
+# IPConflictMonitor 3.2 — Strict Evidence Detection
 
-Aplicativo portátil para Windows que identifica indícios e confirmações de dois equipamentos usando o mesmo endereço IPv4 na rede local. A ferramenta foi escrita em C# nativo e possui uma interface voltada aos técnicos de campo.
+Ferramenta portátil para Windows destinada a verificar conflitos IPv4 no mesmo domínio de camada 2. A versão 3.2 adota uma política conservadora: informação ambígua nunca é apresentada como conflito.
 
-## Recursos principais
+> Um conflito somente é confirmado quando requisições ARP geradas pelo monitor recebem respostas contemporâneas, correlacionadas, repetidas e consistentes de dois endereços MAC distintos para o mesmo IPv4.
 
-- varredura IPv4 da rede local com seleção automática da interface;
-- leitura da tabela ARP pela API nativa do Windows;
-- captura ARP adicional quando TShark/Npcap está disponível;
-- correlação histórica entre endereço IP e endereços MAC;
-- classificação visual em `NORMAL`, `SUSPECT` e `CONFIRMED`;
-- relatórios CSV e log técnico no perfil local do usuário;
-- atualização manual e validada a partir das releases deste repositório.
+## Estados
+
+- `NORMAL`: nenhuma prova contemporânea de conflito;
+- `UNVERIFIED`: mudança ou informação incompleta sem prova suficiente;
+- `MONITORING_LIMITED`: captura, interface ou visibilidade técnica insuficiente;
+- `CONFIRMED`: todas as condições do Strict Evidence foram aprovadas.
+
+`UNVERIFIED` e `MONITORING_LIMITED` não são incidentes de IP duplicado e nunca geram alerta crítico.
+
+## Arquitetura de detecção
+
+### Fase 1 — Discovery
+
+Descobre hosts e candidatos usando tabela ARP do Windows, ICMP auxiliar, histórico e pacotes ARP observados. Esses dados servem somente para descoberta, visualização e seleção de candidatos. Nenhum resultado desta fase pode produzir `CONFIRMED`.
+
+### Fase 2 — Strict Verification
+
+Para cada candidato, o monitor:
+
+1. inicia uma captura TShark na interface selecionada;
+2. limpa apenas a entrada ARP do IPv4 alvo;
+3. gera uma requisição ARP ativa com o IPv4 local como origem;
+4. exige que a própria requisição apareça na captura;
+5. aceita somente respostas posteriores, dentro da janela configurada, para o alvo e interface corretos;
+6. rejeita MAC broadcast, multicast, nulo ou malformado;
+7. exige o mesmo par de MACs em pelo menos 2 de 3 rodadas;
+8. exige repetição da prova em 2 ciclos consecutivos;
+9. bloqueia a confirmação em caso de Proxy ARP, MAC de gateway ou associação autorizada;
+10. gera `EvidenceId` e SHA-256 da evidência normalizada.
+
+Existe uma única função de decisão (`EvaluateConflict`). A interface gráfica apenas exibe a decisão produzida pelo engine.
+
+## O que não confirma conflito
+
+- mudança histórica de MAC;
+- dois MACs existentes apenas no cache ARP;
+- alternância ou flapping anterior;
+- ping, timeout, TTL ou disponibilidade;
+- pontuação de confiança;
+- ARP espontâneo ou gratuitous ARP isolado;
+- duas identidades vistas em uma captura não correlacionada;
+- resultado parcial após falha do TShark.
+
+## Requisitos para confirmação
+
+- Windows com .NET Framework 4.x;
+- TShark instalado com Npcap funcional;
+- interface correta e operacional;
+- visibilidade de camada 2 do IPv4 monitorado;
+- permissão suficiente para capturar na interface;
+- CIDR local alcançável pela interface selecionada.
+
+Wireshark/TShark e Npcap não são empacotados com a ferramenta. Instale-os pelo canal oficial do fornecedor. A GUI e os logs informam quando a verificação estrita não está pronta.
 
 ## Uso pelo técnico
 
-1. Baixe e extraia `IPConflictMonitor-Windows.zip` da página de releases.
-2. Abra `IPConflictMonitor.exe`.
-3. Clique em **Analisar agora** para executar uma varredura única.
-4. Clique em **Monitorar** para repetir as análises enquanto o painel estiver aberto.
-5. Use **Parar** para encerrar o monitoramento da sessão.
+1. Baixe `IPConflictMonitor-Windows.zip` na página de releases.
+2. Extraia o pacote em uma pasta com permissão de escrita.
+3. Abra `IPConflictMonitor.exe`.
+4. Use **Analisar rede** para uma execução única ou **Monitorar** para ciclos contínuos.
+5. Consulte a prova no painel: interface, requisição observada, rodadas, ciclos, respostas e Evidence ID.
 
-Nenhuma instalação é necessária. O campo de busca filtra por IP, hostname, MAC, status ou diagnóstico.
+Para captura em ambientes restritos, pode ser necessário abrir manualmente o aplicativo como Administrador. A ferramenta nunca solicita elevação por conta própria.
 
-## Atualização pelo aplicativo
+## Configuração segura
 
-O botão **Verificar atualização** consulta a release mais recente do GitHub somente quando o usuário clica nele. Quando existe uma versão mais nova, o aplicativo:
+O arquivo `config\config.json` acompanha o EXE. Defaults oficiais:
 
-1. mostra a versão e as notas da release;
-2. solicita confirmação antes do download;
-3. baixa `IPConflictMonitor-Windows.zip` e `IPConflictMonitor.exe.sha256` por HTTPS;
-4. compara o SHA-256 do novo executável;
-5. substitui o executável atual e reinicia a ferramenta;
-6. restaura a versão anterior se a substituição ou a validação falhar.
+```json
+{
+  "DetectionMode": "StrictEvidence",
+  "VerificationRounds": 3,
+  "RequiredPositiveRounds": 2,
+  "RequiredConfirmedCycles": 2,
+  "ArpResponseWindowMs": 1500,
+  "RequireCapturedArpRequest": true,
+  "RequireCorrelatedArpResponses": true,
+  "FailClosedWithoutCapture": true,
+  "DetectProxyArp": true,
+  "MaxConcurrentVerifications": 1,
+  "ArpProbeRateLimitMs": 250
+}
+```
 
-Não há token ou credencial dentro do executável. O atualizador aceita somente os arquivos publicados em `costC22/IP-Conflict-` e bloqueia URLs fora do GitHub. Como o programa é portátil, mantenha a pasta em um local no qual o usuário possua permissão de escrita.
+As três proteções fundamentais não podem ser desativadas. Uma configuração insegura é recusada com `STRICT DETECTION SAFETY DISABLED`.
 
-## Como a detecção funciona
+### Autorizações explícitas
 
-1. Seleciona a interface IPv4 física ativa ou o índice configurado.
-2. Lê a tabela ARP diretamente pela API `iphlpapi.dll`.
-3. Faz varredura ICMP paralela para provocar a resolução dos vizinhos.
-4. Quando disponível, usa TShark/Npcap para observar respostas ARP diretamente.
-5. Mantém uma janela de evidências por IP e MAC.
-6. Classifica o resultado como normal, suspeito ou confirmado.
+- `TrustedPairs`: pares `IP|MAC` permitidos;
+- `TrustedVirtualIps`: VIPs/endereços de HA explicitamente autorizados;
+- `TrustedMacs`: MACs globais autorizados;
+- `ExcludedIPs` e `ExcludedMACs`: itens fora do escopo.
 
-Um conflito é confirmado quando dois MACs aparecem na mesma captura, respondem às sondagens no mesmo ciclo ou alternam repetidamente com evidências suficientes. Uma troca isolada permanece como suspeita para reduzir falsos positivos.
+Toda exceção fica visível e auditável no JSON.
 
-No modo portátil comum, sem privilégios administrativos, a análise usa a tabela de vizinhos e o histórico. Para máxima precisão em uma ocorrência difícil, abra manualmente o aplicativo como Administrador e instale Wireshark/TShark com Npcap. O aplicativo nunca solicita elevação sozinho.
+## Seleção de interface
 
-## Segurança e privacidade
+O seletor prioriza Ethernet/Wi-Fi físicos, gateway válido, velocidade e compatibilidade com o CIDR. VPN, TAP/TUN, Hyper-V, VMware, VirtualBox, WSL, Docker, Bluetooth, ZeroTier e Tailscale são penalizados automaticamente, salvo escolha explícita por `InterfaceIndex`.
 
-- não cria serviço, tarefa agendada ou inicialização automática;
-- não se copia para pastas do sistema;
-- não executa scripts durante o uso ou a atualização;
-- não coleta telemetria nem envia resultados da rede;
-- grava os diagnósticos apenas no perfil local do usuário;
-- contém somente a configuração JSON como recurso incorporado.
+Os logs registram:
 
-Uma assinatura Authenticode válida é recomendada para consolidar a reputação do editor no SmartScreen e em antivírus corporativos. O SHA-256 confirma a integridade do download, mas não substitui uma assinatura de código emitida para o publicador.
+```text
+SelectedInterfaceName
+SelectedInterfaceIndex
+SelectedInterfaceIPv4
+SelectedInterfaceMac
+SelectedInterfaceCidr
+SelectionReason
+```
 
-## Arquivos e relatórios
+Se o IPv4 local não pertencer ao CIDR configurado, o estado passa a `MONITORING_LIMITED` com a mensagem `configured network not reachable through selected interface`.
+
+## Evidências, logs e relatórios
+
+Os dados ficam somente no perfil local:
 
 ```text
 %LocalAppData%\IPConflictMonitor\logs\monitor.log
@@ -69,56 +128,93 @@ Uma assinatura Authenticode válida é recomendada para consolidar a reputação
 %LocalAppData%\IPConflictMonitor\data\state.json
 ```
 
-## Configuração
+`snapshot.csv` registra estado, MACs, interface, monitor IP, requisição observada, rodadas positivas, ciclos, respostas correlacionadas, Proxy ARP, gateway, associação autorizada, saúde da captura, Evidence ID, EvidenceHash e motivo.
 
-Edite `config\config.json` ao lado do EXE:
+`state.json` e `snapshot.csv` são gravados por arquivo temporário, flush em disco e substituição atômica. O histórico permanece separado do estado atual e nunca mantém um conflito sem prova presente.
 
-- `CIDR`: vazio usa a rede da interface ativa; exemplo: `192.168.15.0/24`;
-- `InterfaceIndex`: zero seleciona automaticamente;
-- `MaxHosts`: limita a quantidade de endereços da varredura;
-- `ExcludedIPs` e `ExcludedMACs`: itens ignorados;
-- `TrustedPairs`: pares permitidos no formato `IP|MAC`;
-- `EvidenceWindowMinutes`: janela usada para correlacionar mudanças;
-- `MinObservationsPerMac` e `MinMacTransitions`: limiares da confirmação histórica;
-- `PacketCaptureEnabled`: usa TShark quando disponível;
-- `ActiveArpProbeEnabled`: habilita sondagem ativa quando o processo já foi aberto como Administrador.
+## Recuperação
 
-## Linha de comando
+Quando a prova deixa de existir, o estado atual sai de `CONFIRMED`. Se somente um MAC permanece e a captura está saudável, o engine registra `CONFLICT_RESOLVED` e volta para `NORMAL`. O último conflito pode continuar no histórico para auditoria, sem afetar a decisão atual.
+
+## Self-test
+
+O executável contém 24 cenários sintéticos e não depende da rede real:
 
 ```powershell
-.\IPConflictMonitor.exe -Worker -Once
-.\IPConflictMonitor.exe -Worker
-.\IPConflictMonitor.exe -Status
-.\IPConflictMonitor.exe -CheckUpdate
-.\IPConflictMonitor.exe -ValidateConfiguration -ConfigPath .\config\config.json
+.\IPConflictMonitor.exe -SelfTestDetection
 ```
 
-## Gerar o EXE
+Resultado obrigatório:
 
-No Windows com .NET Framework:
+```text
+24 passed
+0 failed
+```
+
+O build é interrompido se qualquer cenário falhar.
+
+## Compilação
+
+Em um Windows com .NET Framework:
 
 ```powershell
 .\Build-Executable.ps1
 ```
 
-Para assinar durante o build, informe o thumbprint de um certificado instalado:
+O fluxo executa:
+
+```text
+validação estática da política
+→ compilação limpa
+→ 24 self-tests
+→ validação da configuração
+→ validação do binário
+→ renderização da GUI
+→ pacote ZIP e SHA-256
+```
+
+Para assinar com um certificado instalado:
 
 ```powershell
 .\Build-Executable.ps1 -CertificateThumbprint 'THUMBPRINT_DO_CERTIFICADO'
 ```
 
-O build valida a versão, a configuração, os recursos incorporados, a presença do atualizador e a renderização da interface. Os artefatos são gravados em `dist`.
+## Atualização pelo aplicativo
 
-## Publicar uma versão
+O botão **Verificar atualização** consulta a release pública mais recente quando acionado. O download usa HTTPS, valida o SHA-256, substitui o executável com backup e restaura a versão anterior se a verificação final falhar. Nenhuma credencial é incorporada ao EXE.
 
-1. Atualize o número de versão do assembly e da interface.
-2. Execute `Build-Executable.ps1` e os testes.
-3. Crie e envie uma tag no formato `v3.1.0`.
-4. O fluxo de release recompila e publica EXE, ZIP, SHA-256 e imagem do painel.
+## Troubleshooting
 
-## Limites
+### MONITORING_LIMITED — TShark indisponível
 
-- o monitor enxerga somente o segmento de camada 2 alcançável pela interface escolhida;
-- dispositivos silenciosos podem aparecer após tráfego ou varreduras posteriores;
-- switches com isolamento, VLANs ou segurança de porta podem limitar a observação;
-- um executável sem assinatura pode receber alerta baseado em baixa reputação.
+Instale Wireshark/TShark e confirme o caminho em `Integrations.TSharkPath` se a descoberta automática não funcionar.
+
+### MONITORING_LIMITED — Npcap/interface indisponível
+
+Confirme a instalação do Npcap, permissões de captura e se o TShark lista a interface correta com `tshark -D`.
+
+### CIDR não alcançável
+
+Revise `Network.CIDR` e `InterfaceIndex`. A distribuição oficial prefere não confirmar a produzir um incidente em uma interface incorreta.
+
+### Mudança de MAC aparece como NÃO VERIFICADO
+
+Esse é o comportamento esperado. DHCP, failover, VIP, migração de VM e substituição de equipamento podem trocar a associação sem conflito simultâneo.
+
+## Limitações técnicas
+
+- Strict ARP verification requer visibilidade Layer 2 do IPv4 monitorado;
+- redes roteadas remotas não podem ser verificadas universalmente por ARP;
+- private VLAN, port isolation e segurança de switch podem ocultar um dos respondentes;
+- Proxy ARP, gateway e ambientes HA recebem tratamento conservador;
+- ausência de prova suficiente produz `UNVERIFIED` ou `MONITORING_LIMITED`, nunca conflito;
+- o binário sem assinatura pode receber alerta de reputação mesmo após varredura antivírus limpa.
+
+## Segurança operacional
+
+- sem serviço, tarefa agendada ou inicialização automática;
+- sem scripts no fluxo de execução ou atualização;
+- sem telemetria de rede;
+- processos externos usam timeout, captura de saída e `UseShellExecute = false`;
+- apenas uma verificação do mesmo processo ocorre por vez;
+- sondagens possuem limite de frequência para evitar tráfego excessivo.

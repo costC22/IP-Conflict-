@@ -81,9 +81,23 @@ namespace IPConflictMonitor.Launcher
             public string MappingMismatch;
             public string FirstSeen;
             public string LastSeen;
-            public string DhcpHostname;
-            public string DhcpClientId;
             public string Reason;
+            public string Interface;
+            public string MonitorIp;
+            public string RequestObserved;
+            public string PositiveRounds;
+            public string RequiredRounds;
+            public string ConfirmedCycles;
+            public string RequiredCycles;
+            public string CorrelatedArpReplies;
+            public string ProxyArpRisk;
+            public string GatewayMac;
+            public string TrustedPair;
+            public string CaptureHealthy;
+            public string ConfidenceScore;
+            public string EvidenceId;
+            public string EvidenceHash;
+            public string EvidenceQuality;
         }
 
         private sealed class FeedItem
@@ -279,6 +293,7 @@ namespace IPConflictMonitor.Launcher
             private readonly MetricPanel _attentionMetric;
             private readonly MetricPanel _conflictMetric;
             private readonly Timer _timer;
+            private const string StopEventName = "Local\\IPConflictMonitor.StrictEvidence.Stop";
             private Process _worker;
             private bool _continuous;
             private DateTime _lastSnapshot = DateTime.MinValue;
@@ -287,7 +302,7 @@ namespace IPConflictMonitor.Launcher
             public NetworkOperationsForm(bool demoMode)
             {
                 _demoMode = demoMode;
-                Text = "IPConflictMonitor 3 — Network Operations";
+                Text = "IPConflictMonitor 3.2 — Strict Evidence";
                 Icon = SystemIcons.Shield;
                 BackColor = Canvas;
                 ForeColor = MainText;
@@ -321,7 +336,7 @@ namespace IPConflictMonitor.Launcher
                 _grid = BuildGrid();
                 content.Controls.Add(_grid, 0, 4);
                 content.Controls.Add(BuildLowerDeck(out _details, out _feed), 0, 5);
-                _footer = new Label { Dock = DockStyle.Fill, Text = "FIELD EDITION 3.1  •  MOTOR C# NATIVO  •  SEM POWERSHELL  •  SEM INSTALAÇÃO", ForeColor = Color.FromArgb(87, 114, 143), Font = new Font("Segoe UI Semibold", 7.3F), TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(2, 0, 0, 0) };
+                _footer = new Label { Dock = DockStyle.Fill, Text = "FIELD EDITION 3.2  •  MOTOR C# NATIVO  •  SEM POWERSHELL  •  SEM INSTALAÇÃO", ForeColor = Color.FromArgb(87, 114, 143), Font = new Font("Segoe UI Semibold", 7.3F), TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(2, 0, 0, 0) };
                 content.Controls.Add(_footer, 0, 6);
 
                 _search.HandleCreated += delegate { SendMessage(_search.Handle, 0x1501, new IntPtr(1), "Buscar por IP, nome do dispositivo, MAC ou diagnóstico..."); };
@@ -394,7 +409,7 @@ namespace IPConflictMonitor.Launcher
                 stepLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
                 stepLayout.Controls.Add(new Label { Text = "FLUXO DO TÉCNICO", Dock = DockStyle.Fill, ForeColor = Cyan, Font = new Font("Segoe UI Semibold", 7.3F), TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
                 stepLayout.Controls.Add(new Label { Text = "01  Analisar a rede", Dock = DockStyle.Fill, ForeColor = MainText, Font = new Font("Segoe UI", 8F), TextAlign = ContentAlignment.MiddleLeft }, 0, 1);
-                stepLayout.Controls.Add(new Label { Text = "02  Ver conflitos", Dock = DockStyle.Fill, ForeColor = MainText, Font = new Font("Segoe UI", 8F), TextAlign = ContentAlignment.MiddleLeft }, 0, 2);
+                stepLayout.Controls.Add(new Label { Text = "02  Verificar provas", Dock = DockStyle.Fill, ForeColor = MainText, Font = new Font("Segoe UI", 8F), TextAlign = ContentAlignment.MiddleLeft }, 0, 2);
                 stepLayout.Controls.Add(new Label { Text = "03  Conferir evidências", Dock = DockStyle.Fill, ForeColor = MainText, Font = new Font("Segoe UI", 8F), TextAlign = ContentAlignment.MiddleLeft }, 0, 3);
                 steps.Controls.Add(stepLayout);
                 layout.Controls.Add(steps, 0, 7);
@@ -432,7 +447,7 @@ namespace IPConflictMonitor.Launcher
                 titleBox.RowStyles.Add(new RowStyle(SizeType.Absolute, 21));
                 titleBox.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
                 titleBox.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
-                titleBox.Controls.Add(new Label { Text = "NETWORK INTELLIGENCE  /  FIELD EDITION 3.1", Dock = DockStyle.Fill, ForeColor = Cyan, Font = new Font("Segoe UI Semibold", 7.2F), TextAlign = ContentAlignment.BottomLeft, BackColor = Color.Transparent }, 0, 0);
+                titleBox.Controls.Add(new Label { Text = "NETWORK INTELLIGENCE  /  FIELD EDITION 3.2", Dock = DockStyle.Fill, ForeColor = Cyan, Font = new Font("Segoe UI Semibold", 7.2F), TextAlign = ContentAlignment.BottomLeft, BackColor = Color.Transparent }, 0, 0);
                 titleBox.Controls.Add(new Label { Text = "Radar de conflitos IPv4", Dock = DockStyle.Fill, ForeColor = MainText, Font = new Font("Segoe UI Semibold", 20F), TextAlign = ContentAlignment.BottomLeft, BackColor = Color.Transparent }, 0, 1);
                 titleBox.Controls.Add(new Label { Text = "Descubra quando dois dispositivos disputam o mesmo endereço na rede local", Dock = DockStyle.Fill, ForeColor = SoftText, Font = new Font("Segoe UI", 8.7F), TextAlign = ContentAlignment.TopLeft, BackColor = Color.Transparent }, 0, 2);
                 layout.Controls.Add(titleBox, 0, 0);
@@ -463,7 +478,7 @@ namespace IPConflictMonitor.Launcher
                 layout.Controls.Add(stateBox, 0, 0);
                 network = new Label { Text = "Interface e CIDR serão detectados automaticamente", Dock = DockStyle.Fill, ForeColor = Color.FromArgb(162, 184, 209), Font = new Font("Consolas", 8.1F), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, Padding = new Padding(10, 0, 0, 0) };
                 layout.Controls.Add(network, 1, 0);
-                layout.Controls.Add(CreateEngineBadge("ARP + ICMP", Cyan), 2, 0);
+                layout.Controls.Add(CreateEngineBadge("ARP STRICT", Cyan), 2, 0);
                 updated = new Label { Text = "Nenhum diagnóstico", Dock = DockStyle.Fill, ForeColor = SoftText, Font = new Font("Segoe UI", 8F), TextAlign = ContentAlignment.MiddleRight };
                 layout.Controls.Add(updated, 3, 0);
                 stop = new GradientButton { Text = "■  PARAR", Dock = DockStyle.Fill, Margin = new Padding(12, 7, 0, 7), StartColor = Color.FromArgb(52, 28, 42), EndColor = Color.FromArgb(40, 25, 38), HoverStartColor = Color.FromArgb(75, 33, 49), HoverEndColor = Color.FromArgb(55, 28, 42), BorderColor = Color.FromArgb(94, 45, 60), ForeColor = Red, Font = new Font("Segoe UI Semibold", 7.7F), Radius = 7, Enabled = false };
@@ -488,7 +503,7 @@ namespace IPConflictMonitor.Launcher
                 for (int index = 0; index < 4; index++) { layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25)); }
                 total = CreateMetric("ENDEREÇOS OBSERVADOS", "◎", Blue, new Padding(0, 0, 7, 0));
                 normal = CreateMetric("ASSOCIAÇÕES NORMAIS", "✓", Green, new Padding(3, 0, 4, 0));
-                attention = CreateMetric("REQUEREM ATENÇÃO", "!", Amber, new Padding(4, 0, 3, 0));
+                attention = CreateMetric("SEM CONFIRMAÇÃO", "!", Amber, new Padding(4, 0, 3, 0));
                 conflicts = CreateMetric("CONFLITOS CONFIRMADOS", "×", Red, new Padding(7, 0, 0, 0));
                 layout.Controls.Add(total, 0, 0); layout.Controls.Add(normal, 1, 0); layout.Controls.Add(attention, 2, 0); layout.Controls.Add(conflicts, 3, 0);
                 return layout;
@@ -599,8 +614,8 @@ namespace IPConflictMonitor.Launcher
                 if (eventArgs.RowIndex < 0 || eventArgs.ColumnIndex != 0) { return; }
                 eventArgs.PaintBackground(eventArgs.CellBounds, true);
                 string raw = Convert.ToString(eventArgs.FormattedValue);
-                Color color = raw == "CONFIRMED" ? Red : raw == "SUSPECT" ? Amber : Green;
-                string text = raw == "CONFIRMED" ? "CONFLITO" : raw == "SUSPECT" ? "ATENÇÃO" : "NORMAL";
+                Color color = raw == "CONFIRMED" ? Red : raw == "MONITORING_LIMITED" ? Amber : raw == "UNVERIFIED" ? Blue : Green;
+                string text = raw == "CONFIRMED" ? "CONFLITO" : raw == "MONITORING_LIMITED" ? "LIMITADO" : raw == "UNVERIFIED" ? "NÃO VERIFIC." : "NORMAL";
                 Rectangle badge = new Rectangle(eventArgs.CellBounds.X + 13, eventArgs.CellBounds.Y + 8, eventArgs.CellBounds.Width - 26, eventArgs.CellBounds.Height - 16);
                 eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 using (GraphicsPath path = CreateRoundPath(badge, 8))
@@ -614,7 +629,7 @@ namespace IPConflictMonitor.Launcher
             {
                 object value = _grid.Rows[eventArgs.RowIndex].Cells[0].Value;
                 string status = Convert.ToString(value);
-                Color color = status == "CONFIRMED" ? Red : status == "SUSPECT" ? Amber : Color.Transparent;
+                Color color = status == "CONFIRMED" ? Red : status == "MONITORING_LIMITED" ? Amber : status == "UNVERIFIED" ? Blue : Color.Transparent;
                 if (color.A == 0) { return; }
                 using (var brush = new SolidBrush(color)) { eventArgs.Graphics.FillRectangle(brush, eventArgs.RowBounds.X, eventArgs.RowBounds.Y, 3, eventArgs.RowBounds.Height); }
             }
@@ -622,23 +637,22 @@ namespace IPConflictMonitor.Launcher
             private void LoadDemo()
             {
                 _rows.Clear();
-                _rows.Add(new NetworkRow { IP = "192.168.15.35", Hostname = "IMPRESSORA-RECEPCAO", Status = "CONFIRMED", MACs = "00:1A:2B:3C:4D:5E, 70:8A:09:11:22:33", MACDetails = "Múltiplas identidades de camada 2", MacCount = "2", Observations = "8", Transitions = "3", DirectArpMacCount = "2", ActiveProbeMacCount = "2", FirstSeen = "2026-07-29T10:02:11", LastSeen = "2026-07-29T10:04:29", Reason = "Dois MACs responderam durante a mesma captura ARP." });
-                _rows.Add(new NetworkRow { IP = "192.168.15.21", Hostname = "NOTEBOOK-CAMPO", Status = "SUSPECT", MACs = "34:AB:90:12:CD:44, 98:76:54:32:10:FE", MACDetails = "Alternância recente", MacCount = "2", Observations = "4", Transitions = "1", DirectArpMacCount = "1", ActiveProbeMacCount = "1", FirstSeen = "2026-07-29T10:01:03", LastSeen = "2026-07-29T10:04:22", Reason = "Mais de um MAC observado na janela de evidências." });
-                _rows.Add(new NetworkRow { IP = "192.168.15.1", Hostname = "GATEWAY-FILIAL", Status = "NORMAL", MACs = "E8:45:8B:2D:2F:10", MACDetails = "Associação estável", MacCount = "1", Observations = "9", Transitions = "0", DirectArpMacCount = "1", ActiveProbeMacCount = "1", FirstSeen = "2026-07-29T09:59:01", LastSeen = "2026-07-29T10:04:31", Reason = "Um único MAC observado." });
-                _rows.Add(new NetworkRow { IP = "192.168.15.10", Hostname = "PDV-CAIXA-01", Status = "NORMAL", MACs = "98:2F:F8:A9:27:19", MACDetails = "Associação estável", MacCount = "1", Observations = "9", Transitions = "0", DirectArpMacCount = "1", ActiveProbeMacCount = "1", FirstSeen = "2026-07-29T09:59:01", LastSeen = "2026-07-29T10:04:31", Reason = "Um único MAC observado." });
-                _rows.Add(new NetworkRow { IP = "192.168.15.12", Hostname = "CAMERA-ESTOQUE", Status = "NORMAL", MACs = "6E:3F:FA:04:5A:3B", MACDetails = "Associação estável", MacCount = "1", Observations = "7", Transitions = "0", DirectArpMacCount = "1", ActiveProbeMacCount = "1", FirstSeen = "2026-07-29T10:00:18", LastSeen = "2026-07-29T10:04:28", Reason = "Um único MAC observado." });
+                _rows.Add(new NetworkRow { IP = "192.168.15.35", Hostname = "IMPRESSORA-RECEPCAO", Status = "CONFIRMED", MACs = "00:1A:2B:3C:4D:5E, 70:8A:09:11:22:32", MACDetails = "Dois MACs com prova estrita", MacCount = "2", Observations = "8", DirectArpMacCount = "2", ActiveProbeMacCount = "2", FirstSeen = "2026-08-22T10:02:11", LastSeen = "2026-08-22T10:04:29", Interface = "Ethernet (#12)", MonitorIp = "192.168.15.3", RequestObserved = "True", PositiveRounds = "2", RequiredRounds = "2", ConfirmedCycles = "2", RequiredCycles = "2", CorrelatedArpReplies = "6", CaptureHealthy = "True", EvidenceId = "EVD-20260822-00152", EvidenceQuality = "STRICT_PROOF", Reason = "Conflito confirmado após respostas ARP correlacionadas e repetidas de dois MACs distintos para o mesmo IPv4." });
+                _rows.Add(new NetworkRow { IP = "192.168.15.21", Hostname = "NOTEBOOK-CAMPO", Status = "UNVERIFIED", MACs = "34:AA:90:12:CC:44, 98:76:54:32:10:FC", MACDetails = "Mudança histórica sem prova atual", MacCount = "2", Observations = "4", DirectArpMacCount = "1", ActiveProbeMacCount = "1", FirstSeen = "2026-08-22T10:01:03", LastSeen = "2026-08-22T10:04:22", Interface = "Ethernet (#12)", MonitorIp = "192.168.15.3", RequestObserved = "True", PositiveRounds = "0", RequiredRounds = "2", ConfirmedCycles = "0", RequiredCycles = "2", CorrelatedArpReplies = "1", CaptureHealthy = "True", EvidenceId = "EVD-20260822-00153", EvidenceQuality = "INCONCLUSIVE", Reason = "Mudança de associação observada — conflito não confirmado." });
+                _rows.Add(new NetworkRow { IP = "192.168.15.80", Hostname = "CAMERA-ISOLADA", Status = "MONITORING_LIMITED", MACs = "00:25:96:AB:CD:10", MACDetails = "Captura indisponível", MacCount = "1", Observations = "2", FirstSeen = "2026-08-22T10:01:03", LastSeen = "2026-08-22T10:04:22", Interface = "Ethernet (#12)", MonitorIp = "192.168.15.3", PositiveRounds = "0", RequiredRounds = "2", ConfirmedCycles = "0", RequiredCycles = "2", CaptureHealthy = "False", EvidenceId = "EVD-20260822-00154", EvidenceQuality = "CAPTURE_UNAVAILABLE", Reason = "Não foi possível confirmar porque a camada de captura ARP não está disponível." });
+                _rows.Add(new NetworkRow { IP = "192.168.15.1", Hostname = "GATEWAY-FILIAL", Status = "NORMAL", MACs = "E8:44:8A:2C:2E:10", MACDetails = "Associação atual sem prova de conflito", MacCount = "1", Observations = "9", FirstSeen = "2026-08-22T09:59:01", LastSeen = "2026-08-22T10:04:31", Interface = "Ethernet (#12)", MonitorIp = "192.168.15.3", CaptureHealthy = "True", Reason = "Nenhuma evidência contemporânea de conflito foi encontrada." });
                 ApplyFilter();
-                _engineState.Text = "●  ANÁLISE CONCLUÍDA"; _engineState.ForeColor = Green;
-                _engineHint.Text = "1 conflito confirmado  •  1 endereço requer atenção";
-                _networkLabel.Text = "Ethernet  /  192.168.15.3  /  192.168.15.0/24";
+                _engineState.Text = "●  STRICT VERIFICATION READY"; _engineState.ForeColor = Green;
+                _engineHint.Text = "1 conflito confirmado  •  1 não verificado  •  1 limitado";
+                _networkLabel.Text = "Ethernet  /  192.168.15.3  /  Strict Evidence";
                 _updatedLabel.Text = "Atualizado às 10:04:31";
-                _footer.Text = "MODO DE DEMONSTRAÇÃO  •  DADOS FICTÍCIOS  •  NENHUMA ATIVIDADE DE REDE EXECUTADA";
+                _footer.Text = "MODO DE DEMONSTRAÇÃO  •  DADOS FICTÍCIOS  •  STRICT EVIDENCE 3.2";
                 _feed.SetItems(new[]
                 {
-                    new FeedItem { Time = "10:04:23", Text = "Motor C# nativo iniciado", Color = Cyan },
-                    new FeedItem { Time = "10:04:24", Text = "Rede 192.168.15.0/24 • 254 alvos", Color = Color.FromArgb(173, 196, 220) },
-                    new FeedItem { Time = "10:04:29", Text = "Dois MACs responderam para 192.168.15.35", Color = Red },
-                    new FeedItem { Time = "10:04:31", Text = "Ciclo concluído • 5 dispositivos observados", Color = Green }
+                    new FeedItem { Time = "10:04:23", Text = "Strict Verification READY", Color = Cyan },
+                    new FeedItem { Time = "10:04:24", Text = "Requisição ARP correlacionada para 192.168.15.35", Color = Color.FromArgb(173, 196, 220) },
+                    new FeedItem { Time = "10:04:29", Text = "2/3 rodadas positivas • ciclo 2/2", Color = Red },
+                    new FeedItem { Time = "10:04:31", Text = "Conflito confirmado • Evidence EVD-20260822-00152", Color = Red }
                 });
             }
 
@@ -664,7 +678,8 @@ namespace IPConflictMonitor.Launcher
                     if (!_worker.HasExited)
                     {
                         if (ask && MessageBox.Show(this, "Encerrar a análise de rede em andamento?", "IPConflictMonitor", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) { return; }
-                        _worker.Kill(); _worker.WaitForExit(2500);
+                        try { using (System.Threading.EventWaitHandle stop = System.Threading.EventWaitHandle.OpenExisting(StopEventName)) { stop.Set(); } } catch { }
+                        if (!_worker.WaitForExit(5000)) { _worker.Kill(); _worker.WaitForExit(2500); }
                     }
                 }
                 catch { }
@@ -741,7 +756,8 @@ namespace IPConflictMonitor.Launcher
                         {
                             Timestamp = Value(indexes, values, "Timestamp"), IP = Value(indexes, values, "IP"), Hostname = Value(indexes, values, "Hostname"), Status = Value(indexes, values, "Status"), MACs = Value(indexes, values, "MACs"), MACDetails = Value(indexes, values, "MACDetails"),
                             MacCount = Value(indexes, values, "MacCount"), Observations = Value(indexes, values, "Observations"), Transitions = Value(indexes, values, "Transitions"), DirectArpMacCount = Value(indexes, values, "DirectArpMacCount"), ActiveProbeMacCount = Value(indexes, values, "ActiveProbeMacCount"),
-                            MappingMismatch = Value(indexes, values, "MappingMismatch"), FirstSeen = Value(indexes, values, "FirstSeen"), LastSeen = Value(indexes, values, "LastSeen"), DhcpHostname = Value(indexes, values, "DhcpHostname"), DhcpClientId = Value(indexes, values, "DhcpClientId"), Reason = Value(indexes, values, "Reason")
+                            MappingMismatch = Value(indexes, values, "MappingMismatch"), FirstSeen = Value(indexes, values, "FirstSeen"), LastSeen = Value(indexes, values, "LastSeen"), Reason = Value(indexes, values, "Reason"),
+                            Interface = Value(indexes, values, "Interface"), MonitorIp = Value(indexes, values, "MonitorIp"), RequestObserved = Value(indexes, values, "RequestObserved"), PositiveRounds = Value(indexes, values, "PositiveRounds"), RequiredRounds = Value(indexes, values, "RequiredRounds"), ConfirmedCycles = Value(indexes, values, "ConfirmedCycles"), RequiredCycles = Value(indexes, values, "RequiredCycles"), CorrelatedArpReplies = Value(indexes, values, "CorrelatedArpReplies"), ProxyArpRisk = Value(indexes, values, "ProxyArpRisk"), GatewayMac = Value(indexes, values, "GatewayMac"), TrustedPair = Value(indexes, values, "TrustedPair"), CaptureHealthy = Value(indexes, values, "CaptureHealthy"), ConfidenceScore = Value(indexes, values, "ConfidenceScore"), EvidenceId = Value(indexes, values, "EvidenceId"), EvidenceHash = Value(indexes, values, "EvidenceHash"), EvidenceQuality = Value(indexes, values, "EvidenceQuality")
                         });
                     }
                 }
@@ -761,7 +777,7 @@ namespace IPConflictMonitor.Launcher
                 }
                 _totalMetric.MetricValue = _rows.Count.ToString();
                 _normalMetric.MetricValue = _rows.Count(delegate(NetworkRow row) { return row.Status == "NORMAL"; }).ToString();
-                _attentionMetric.MetricValue = _rows.Count(delegate(NetworkRow row) { return row.Status == "SUSPECT"; }).ToString();
+                _attentionMetric.MetricValue = _rows.Count(delegate(NetworkRow row) { return row.Status == "UNVERIFIED" || row.Status == "MONITORING_LIMITED"; }).ToString();
                 _conflictMetric.MetricValue = _rows.Count(delegate(NetworkRow row) { return row.Status == "CONFIRMED"; }).ToString();
                 _totalMetric.Invalidate(); _normalMetric.Invalidate(); _attentionMetric.Invalidate(); _conflictMetric.Invalidate();
                 if (_grid.Rows.Count > 0) { _grid.CurrentCell = _grid.Rows[0].Cells[0]; _grid.Rows[0].Selected = true; ShowDetails(); }
@@ -773,9 +789,10 @@ namespace IPConflictMonitor.Launcher
                 if (_grid.SelectedRows.Count == 0 || !(_grid.SelectedRows[0].Tag is NetworkRow)) { return; }
                 var row = (NetworkRow)_grid.SelectedRows[0].Tag;
                 _details.Text = "IPv4       " + row.IP + "      STATUS  " + StatusText(row.Status) + Environment.NewLine +
-                    "DISPOSITIVO " + Empty(row.Hostname) + Environment.NewLine +
+                    "DISPOSITIVO " + Empty(row.Hostname) + "      INTERFACE  " + Empty(row.Interface) + Environment.NewLine +
                     "MAC(S)      " + row.MACs + Environment.NewLine +
-                    "EVIDÊNCIAS  " + row.Observations + " observações  •  " + row.Transitions + " transições  •  ARP " + row.DirectArpMacCount + "  •  sondagem " + row.ActiveProbeMacCount + Environment.NewLine +
+                    "PROVA       requisição=" + Empty(row.RequestObserved) + "  •  rodadas=" + Empty(row.PositiveRounds) + "/" + Empty(row.RequiredRounds) + "  •  ciclos=" + Empty(row.ConfirmedCycles) + "/" + Empty(row.RequiredCycles) + "  •  respostas=" + Empty(row.CorrelatedArpReplies) + Environment.NewLine +
+                    "EVIDENCE    " + Empty(row.EvidenceId) + "  •  qualidade=" + Empty(row.EvidenceQuality) + "  •  captura=" + Empty(row.CaptureHealthy) + Environment.NewLine +
                     "JANELA      " + Time(row.FirstSeen) + "  →  " + Time(row.LastSeen) + Environment.NewLine +
                     "CONCLUSÃO   " + row.Reason;
             }
@@ -793,8 +810,9 @@ namespace IPConflictMonitor.Launcher
                 foreach (string line in queue)
                 {
                     Color color = Color.FromArgb(170, 192, 216);
-                    if (line.IndexOf("[CONFIRMED]", StringComparison.OrdinalIgnoreCase) >= 0 || line.IndexOf("[ERROR]", StringComparison.OrdinalIgnoreCase) >= 0) { color = Red; }
-                    else if (line.IndexOf("[SUSPECT]", StringComparison.OrdinalIgnoreCase) >= 0 || line.IndexOf("[WARN]", StringComparison.OrdinalIgnoreCase) >= 0) { color = Amber; }
+                    if (line.IndexOf("[CONFLICT]", StringComparison.OrdinalIgnoreCase) >= 0 || line.IndexOf("[ERROR]", StringComparison.OrdinalIgnoreCase) >= 0) { color = Red; }
+                    else if (line.IndexOf("[LIMITED]", StringComparison.OrdinalIgnoreCase) >= 0 || line.IndexOf("[WARN]", StringComparison.OrdinalIgnoreCase) >= 0) { color = Amber; }
+                    else if (line.IndexOf("[VERIFY]", StringComparison.OrdinalIgnoreCase) >= 0 || line.IndexOf("[STATE]", StringComparison.OrdinalIgnoreCase) >= 0) { color = Blue; }
                     else if (line.IndexOf("Ciclo concluido", StringComparison.OrdinalIgnoreCase) >= 0) { color = Green; }
                     int interfaceIndex = line.IndexOf("Interface=", StringComparison.OrdinalIgnoreCase);
                     if (interfaceIndex >= 0) { _networkLabel.Text = line.Substring(interfaceIndex).TrimEnd('.').Replace(";", "  / "); color = Cyan; }
@@ -823,7 +841,7 @@ namespace IPConflictMonitor.Launcher
 
             private void ShowHelp()
             {
-                MessageBox.Show(this, "1. Clique em ANALISAR REDE para uma verificação única.\n\n2. Use MONITORAR para repetir as análises durante o atendimento.\n\n3. CONFLITO indica dois MACs confirmados no mesmo IPv4. ATENÇÃO indica evidência que ainda precisa de confirmação.\n\nPara maior precisão, execute manualmente como Administrador e instale TShark/Npcap.", "Ajuda rápida", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, "1. ANALISAR REDE executa discovery e Strict Verification.\n\n2. CONFLITO só aparece após requisições ARP correlacionadas, o mesmo par em pelo menos 2 de 3 rodadas e 2 ciclos consecutivos.\n\n3. NÃO VERIFICADO nunca é incidente. MONITORAMENTO LIMITADO indica ausência de captura confiável.\n\nStrict ARP verification requer visibilidade Layer 2, TShark e Npcap.", "Ajuda — Strict Evidence", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
 
             private static List<string> ParseCsv(string line)
@@ -840,12 +858,12 @@ namespace IPConflictMonitor.Launcher
             }
 
             private static string Value(Dictionary<string, int> indexes, List<string> values, string name) { int index; return indexes.TryGetValue(name, out index) && index < values.Count ? values[index] : String.Empty; }
-            private static int StatusRank(NetworkRow row) { return row.Status == "CONFIRMED" ? 0 : row.Status == "SUSPECT" ? 1 : 2; }
+            private static int StatusRank(NetworkRow row) { return row.Status == "CONFIRMED" ? 0 : row.Status == "MONITORING_LIMITED" ? 1 : row.Status == "UNVERIFIED" ? 2 : 3; }
             private static long IpKey(string ip) { long value = 0; foreach (string part in (ip ?? String.Empty).Split('.')) { int number; value = (value << 8) + (Int32.TryParse(part, out number) ? number : 0); } return value; }
             private static bool Has(string value, string filter) { return (value ?? String.Empty).IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0; }
             private static string Empty(string value) { return String.IsNullOrWhiteSpace(value) ? "—" : value; }
             private static string Time(string value) { DateTime parsed; return DateTime.TryParse(value, out parsed) ? parsed.ToString("dd/MM HH:mm:ss") : Empty(value); }
-            private static string StatusText(string value) { return value == "CONFIRMED" ? "CONFLITO CONFIRMADO" : value == "SUSPECT" ? "REQUER ATENÇÃO" : "NORMAL"; }
+            private static string StatusText(string value) { return value == "CONFIRMED" ? "CONFLITO CONFIRMADO" : value == "MONITORING_LIMITED" ? "MONITORAMENTO LIMITADO" : value == "UNVERIFIED" ? "NÃO VERIFICADO" : "NORMAL"; }
         }
 
         private static GraphicsPath CreateRoundPath(Rectangle rectangle, int radius)
@@ -871,6 +889,7 @@ namespace IPConflictMonitor.Launcher
         }
     }
 }
+
 
 
 
