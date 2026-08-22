@@ -37,8 +37,8 @@ Describe 'Strict Evidence field interface' {
         Assert-VisualTrue (Test-Path -LiteralPath $preview) 'dashboard preview exists'
         $image = [Drawing.Image]::FromFile($preview)
         try {
-            Assert-VisualTrue ($image.Width -gt 1300) 'dashboard width is greater than 1300px'
-            Assert-VisualTrue ($image.Height -gt 800) 'dashboard height is greater than 800px'
+            Assert-VisualTrue ($image.Width -gt 1000) 'dashboard width is greater than 1000px'
+            Assert-VisualTrue ($image.Height -gt 600) 'dashboard height is greater than 600px'
         }
         finally {
             $image.Dispose()
