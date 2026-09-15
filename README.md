@@ -1,6 +1,6 @@
-# IPConflictMonitor 3.3.1 — Strict Evidence Detection
+# IPConflictMonitor 3.4.0 — Strict Evidence Detection
 
-Ferramenta portátil para Windows destinada a verificar conflitos IPv4 no mesmo domínio de camada 2. A versão 3.3.1 mantém a política conservadora de detecção e adiciona uma atualização assistida dentro do painel: informação ambígua nunca é apresentada como conflito.
+Ferramenta portátil para Windows destinada a verificar conflitos IPv4 no mesmo domínio de camada 2. A versão 3.4.0 mantém a política conservadora de detecção, apresenta um console técnico renovado e incorpora configuração e atualização dentro do painel: informação ambígua nunca é apresentada como conflito.
 
 > Um conflito somente é confirmado quando requisições ARP geradas pelo monitor recebem respostas contemporâneas, correlacionadas, repetidas e consistentes de dois endereços MAC distintos para o mesmo IPv4.
 
@@ -70,9 +70,19 @@ Wireshark/TShark e Npcap não são empacotados com a ferramenta. Instale-os pelo
 
 Para captura em ambientes restritos, pode ser necessário abrir manualmente o aplicativo como Administrador. A ferramenta nunca solicita elevação por conta própria.
 
-## Configuração segura
+## Configuração integrada e segura
 
-O arquivo `config\config.json` acompanha o EXE. Defaults oficiais:
+Use **Configuração** na barra lateral. A página permanece dentro do sistema e organiza o perfil em **Rede**, **Exceções**, **Coleta**, **Verificação**, **Integrações** e **Saída**. O seletor de interface usa a lista nativa do Windows; os campos exibem limites e erros no próprio painel.
+
+O pacote ainda contém `config\config.json`, mas ele funciona como seed da primeira execução. O perfil ativo canônico fica em:
+
+```text
+%LocalAppData%\IPConflictMonitor\config\config.json
+```
+
+Na ausência de um perfil local, o sistema copia o sidecar distribuído; se ele também estiver ausente, usa o default incorporado ao EXE. Depois disso, painel e worker leem o mesmo arquivo local.
+
+Defaults essenciais:
 
 ```json
 {
@@ -90,7 +100,11 @@ O arquivo `config\config.json` acompanha o EXE. Defaults oficiais:
 }
 ```
 
-As três proteções fundamentais não podem ser desativadas. Uma configuração insegura é recusada com `STRICT DETECTION SAFETY DISABLED`.
+As três proteções fundamentais e a serialização da verificação não podem ser desativadas. Uma configuração insegura é recusada com `STRICT DETECTION SAFETY DISABLED`.
+
+O salvamento valida os valores, grava em arquivo temporário, força flush em disco e substitui o perfil atomicamente. A versão anterior permanece em `config.json.previous`. Se uma análise estiver em andamento, o perfil é salvo normalmente e passa a valer somente quando uma nova análise for iniciada.
+
+`Output.Directory` é aplicado de forma consistente ao motor, ao dashboard, à opção **Relatórios** e ao comando `-Status`.
 
 ### Autorizações explícitas
 
@@ -99,7 +113,7 @@ As três proteções fundamentais não podem ser desativadas. Uma configuração
 - `TrustedMacs`: MACs globais autorizados;
 - `ExcludedIPs` e `ExcludedMACs`: itens fora do escopo.
 
-Toda exceção fica visível e auditável no JSON.
+Como essas entradas podem suprimir alertas, qualquer alteração nelas exige duas ações conscientes: **Salvar alterações** e, após a revisão exibida na página, **Confirmar e salvar**. Toda exceção permanece visível e auditável no perfil.
 
 ## Seleção de interface
 
@@ -171,7 +185,7 @@ validação estática da política
 → 24 self-tests
 → validação da configuração
 → validação do binário
-→ renderização do dashboard e da página de atualização
+→ renderização do dashboard, da página de atualização e da página de configuração
 → pacote ZIP e SHA-256
 ```
 

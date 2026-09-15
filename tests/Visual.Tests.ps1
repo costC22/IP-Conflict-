@@ -31,7 +31,7 @@ Describe 'Strict Evidence field interface' {
         }
     }
 
-    It 'renders a full-size version 3.3.1 dashboard preview' {
+    It 'renders a full-size version 3.4.0 dashboard preview' {
         Add-Type -AssemblyName System.Drawing
         $preview = Join-Path $script:projectRoot 'dist\IPConflictMonitor-dashboard.png'
         Assert-VisualTrue (Test-Path -LiteralPath $preview) 'dashboard preview exists'
@@ -43,7 +43,7 @@ Describe 'Strict Evidence field interface' {
         finally {
             $image.Dispose()
         }
-        Assert-VisualMatch (Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw) 'FIELD EDITION 3.3.1' 'field edition label is present'
+        Assert-VisualMatch (Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw) 'IPCONFLICTMONITOR 3.4.0' 'versioned product footer is present'
     }
     It 'renders the in-app update page at full dashboard size' {
         Add-Type -AssemblyName System.Drawing
@@ -62,6 +62,38 @@ Describe 'Strict Evidence field interface' {
             Assert-VisualMatch $source $marker "update page marker $marker is present"
         }
     }
+
+    It 'renders the integrated settings page at full dashboard size' {
+        Add-Type -AssemblyName System.Drawing
+        $preview = Join-Path $script:projectRoot 'dist\IPConflictMonitor-settings.png'
+        Assert-VisualTrue (Test-Path -LiteralPath $preview) 'settings preview exists'
+        $image = [Drawing.Image]::FromFile($preview)
+        try {
+            Assert-VisualTrue ($image.Width -gt 1000) 'settings page width is greater than 1000px'
+            Assert-VisualTrue ($image.Height -gt 600) 'settings page height is greater than 600px'
+        }
+        finally {
+            $image.Dispose()
+        }
+        $source = Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.SettingsExperience.cs') -Raw
+        foreach ($marker in @('SettingsExperiencePage','CONFIGURAÇÃO / PERFIL ATIVO','CONFIRMAR E SALVAR','STRICT EVIDENCE  /  PROTEGIDO')) {
+            Assert-VisualMatch $source $marker "settings page marker $marker is present"
+        }
+    }
+
+    It 'uses the technical appliance typography and native selector contract' {
+        $source = Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.SettingsExperience.cs') -Raw
+        foreach ($marker in @('Bahnschrift','Segoe UI','Consolas','ComboBoxStyle.DropDownList')) {
+            Assert-VisualMatch $source $marker "settings visual marker $marker is present"
+        }
+    }
+
+    It 'contains no decorative circles or external configuration editor' {
+        $uiSource = @(
+            (Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw),
+            (Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.UpdateExperience.cs') -Raw),
+            (Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.SettingsExperience.cs') -Raw)
+        ) -join [Environment]::NewLine
+        Assert-VisualNoMatch $uiSource '(?i)notepad\.exe|FillEllipse|DrawEllipse|●|◉' 'UI contains no legacy editor or decorative circular markers'
+    }
 }
-
-

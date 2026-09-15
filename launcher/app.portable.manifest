@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="3.0.0.0" name="IPConflictMonitor.FieldEdition" />
+  <assemblyIdentity version="3.4.0.0" name="IPConflictMonitor.FieldEdition" />
   <description>Diagnostico portatil de conflitos IPv4 e MAC</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>

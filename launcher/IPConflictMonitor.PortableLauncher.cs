@@ -9,8 +9,8 @@ using System.Text;
 [assembly: AssemblyCompany("IPConflictMonitor")]
 [assembly: AssemblyProduct("IPConflictMonitor Field Edition")]
 [assembly: AssemblyCopyright("Copyright (c) 2026")]
-[assembly: AssemblyVersion("3.3.1.0")]
-[assembly: AssemblyFileVersion("3.3.1.0")]
+[assembly: AssemblyVersion("3.4.0.0")]
+[assembly: AssemblyFileVersion("3.4.0.0")]
 
 namespace IPConflictMonitor.Launcher
 {
@@ -39,6 +39,10 @@ namespace IPConflictMonitor.Launcher
                 {
                     HideConsoleWindow(); return UpdateCoordinator.CaptureUpdateInterface(GetOptionValue(args, "-UpdateScreenshot", "--update-screenshot"));
                 }
+                if (HasSwitch(args, "-SettingsScreenshot", "--settings-screenshot"))
+                {
+                    HideConsoleWindow(); return CaptureSettingsInterface(GetOptionValue(args, "-SettingsScreenshot", "--settings-screenshot"));
+                }
                 if (HasSwitch(args, "-Help", "--help", "/?", "-?")) { PrintHelp(); return 0; }
                 if (HasSwitch(args, "-Status", "--status", "/Status")) { return ShowStatus(); }
                 if (HasSwitch(args, "-Install", "--install", "/Install")) { Console.Error.WriteLine("A instalacao persistente nao faz parte da edicao portatil."); return 2; }
@@ -49,17 +53,16 @@ namespace IPConflictMonitor.Launcher
 
         private static int RunMonitor(string[] args)
         {
-            string applicationDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             string configPath = FindConfigArgument(args);
             if (configPath != null && String.IsNullOrWhiteSpace(configPath)) { throw new ArgumentException("-ConfigPath requer o caminho de um arquivo JSON."); }
-            if (configPath == null) { configPath = EnsureDefaultConfiguration(applicationDirectory); }
+            if (configPath == null) { configPath = ConfigurationStore.ResolveActivePath(); }
             return NativeMonitor.Run(args, configPath);
         }
 
         private static int ShowStatus()
         {
-            string data = GetUserDataDirectory(); string snapshot = Path.Combine(data, "reports", "snapshot.csv");
-            Console.WriteLine("IPConflictMonitor 3.3.1 - Strict Evidence Detection");
+            string data = ConfigurationStore.ResolveOutputDirectory(); string snapshot = Path.Combine(data, "reports", "snapshot.csv");
+            Console.WriteLine("IPConflictMonitor 3.4.0 - Strict Evidence Detection");
             Console.WriteLine("Motor: C# nativo; confirmacao somente por ARP ativo correlacionado e repetido");
             Console.WriteLine("Politica: fail-closed sem TShark/Npcap/captura saudavel");
             Console.WriteLine("Atualizador: GitHub Releases com validacao SHA-256");
@@ -68,13 +71,6 @@ namespace IPConflictMonitor.Launcher
         }
 
         private static string GetUserDataDirectory() { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), ProductDirectoryName); }
-
-        private static string EnsureDefaultConfiguration(string applicationDirectory)
-        {
-            string sidecar = Path.Combine(applicationDirectory, "config", "config.json"); if (File.Exists(sidecar)) { return sidecar; }
-            string directory = Path.Combine(GetUserDataDirectory(), "config"); Directory.CreateDirectory(directory); string path = Path.Combine(directory, "config.json");
-            if (!File.Exists(path)) { File.WriteAllText(path, ReadResourceText(ConfigResource), new UTF8Encoding(false)); } return path;
-        }
 
         private static string ReadResourceText(string resourceName)
         {
@@ -103,13 +99,14 @@ namespace IPConflictMonitor.Launcher
 
         private static void PrintHelp()
         {
-            Console.WriteLine("IPConflictMonitor 3.3.1 - Strict Evidence Detection");
+            Console.WriteLine("IPConflictMonitor 3.4.0 - Strict Evidence Detection");
             Console.WriteLine("  IPConflictMonitor.exe                         Abre o painel grafico.");
             Console.WriteLine("  IPConflictMonitor.exe -Worker -Once           Executa uma varredura portatil.");
             Console.WriteLine("  IPConflictMonitor.exe -Worker                 Monitora enquanto o processo estiver aberto.");
             Console.WriteLine("  IPConflictMonitor.exe -SelfTestDetection      Executa 24 cenarios sinteticos.");
             Console.WriteLine("  IPConflictMonitor.exe -CheckUpdate            Consulta a release mais recente.");
             Console.WriteLine("  IPConflictMonitor.exe -UpdateScreenshot ARQ   Renderiza a página de atualização.");
+            Console.WriteLine("  IPConflictMonitor.exe -SettingsScreenshot ARQ Renderiza a página de configuração.");
             Console.WriteLine("  IPConflictMonitor.exe -Status                 Exibe o ultimo diagnostico.");
             Console.WriteLine("  IPConflictMonitor.exe -ValidateConfiguration  Valida config/config.json.");
             Console.WriteLine();
@@ -117,5 +114,4 @@ namespace IPConflictMonitor.Launcher
         }
     }
 }
-
 

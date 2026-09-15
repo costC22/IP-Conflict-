@@ -167,6 +167,16 @@ Describe 'Assisted update experience' {
         Assert-StrictNoMatch $updater 'MessageBox\.Show' 'updater uses no native message boxes'
     }
 
+    It 'prevents competing pages and protects unsaved settings' {
+        $updater = Get-Content -LiteralPath $script:updaterPath -Raw
+        $gui = Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw
+        Assert-StrictMatch $gui 'TryEnterUpdatePage' 'main shell owns the update navigation lock'
+        Assert-StrictMatch $gui 'SetWorkspaceNavigationEnabled\(false\)' 'sidebar navigation is disabled while update owns the content cell'
+        Assert-StrictMatch $gui '_settingsPage\.HasUnsavedChanges' 'unsaved settings block update navigation'
+        Assert-StrictMatch $updater 'operations\.TryEnterUpdatePage\(\)' 'updater acquires the main shell lock'
+        Assert-StrictMatch $updater 'operations\.LeaveUpdatePage\(\)' 'updater releases the main shell lock'
+    }
+
     It 'reports truthful download progress and verifies the complete file' {
         $updater = Get-Content -LiteralPath $script:updaterPath -Raw
         Assert-StrictMatch $updater 'received \* 100L / total' 'download percentage is byte based'
@@ -186,15 +196,122 @@ Describe 'Assisted update experience' {
         Assert-StrictMatch $experience 'ShowRestarting' 'successful install has a restart state'
     }
 }
+Describe 'Integrated configuration experience' {
+    BeforeAll {
+        $script:projectRoot = Split-Path $PSScriptRoot -Parent
+        $script:settingsPath = Join-Path $script:projectRoot 'launcher\IPConflictMonitor.SettingsExperience.cs'
+        $script:portablePath = Join-Path $script:projectRoot 'launcher\IPConflictMonitor.PortableLauncher.cs'
+        $script:guiPath = Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NeonGui.cs'
+        $script:buildPath = Join-Path $script:projectRoot 'Build-Executable.ps1'
+    }
+
+    It 'uses a canonical local profile seeded from the portable sidecar' {
+        $settings = Get-Content -LiteralPath $script:settingsPath -Raw
+        $portable = Get-Content -LiteralPath $script:portablePath -Raw
+        Assert-StrictMatch $settings 'Path\.Combine\(GetUserDataDirectory\(\), "config"\)' 'canonical configuration lives in the Windows local profile'
+        Assert-StrictMatch $settings 'File\.ReadAllBytes\(sidecar\)' 'portable sidecar is used only as the initial seed'
+        Assert-StrictMatch $settings 'WriteNewFile\(activePath, seed\)' 'seed is promoted to the canonical profile'
+        Assert-StrictMatch $portable 'ConfigurationStore\.ResolveActivePath' 'worker resolves the same canonical configuration'
+    }
+
+    It 'validates the expanded field ranges before saving' {
+        $settings = Get-Content -LiteralPath $script:settingsPath -Raw
+        foreach ($marker in @(
+            'InterfaceIndex < 0',
+            'CaptureSeconds < 2',
+            'CaptureSeconds > 120',
+            'CaptureWarmupMilliseconds < 0',
+            'EvidenceWindowMinutes < 1',
+            'HistoryExpirationMinutes < configuration.Monitoring.EvidenceWindowMinutes',
+            'MaxConcurrentPings < 1',
+            'MaxConcurrentPings > 256',
+            'HostnameTimeoutMs < 100',
+            'ProxyArpIpThreshold < 2',
+            'LogRetentionFiles < 1',
+            'TryCountHosts',
+            'Webhook habilitado exige uma URL HTTPS'
+        )) {
+            Assert-StrictMatch $settings ([regex]::Escape($marker)) "settings validation marker $marker is present"
+        }
+    }
+
+    It 'saves atomically with durable flush validation and previous backup' {
+        $settings = Get-Content -LiteralPath $script:settingsPath -Raw
+        Assert-StrictMatch $settings 'stream\.Flush\(true\)' 'configuration bytes are flushed to disk'
+        Assert-StrictMatch $settings 'NativeMonitor\.LoadConfiguration\(temporary\)' 'temporary configuration is parsed before promotion'
+        Assert-StrictMatch $settings 'Validate\(written\)' 'temporary configuration is validated before promotion'
+        Assert-StrictMatch $settings 'path \+ "\.previous"' 'previous configuration path is explicit'
+        Assert-StrictMatch $settings 'File\.Replace\(temporary, path, backup, true\)' 'configuration is replaced atomically with backup'
+        Assert-StrictMatch $settings 'finally[\s\S]*File\.Delete\(temporary\)' 'temporary file is cleaned after every outcome'
+    }
+
+    It 'locks Strict Evidence and requires two deliberate actions for exceptions' {
+        $settings = Get-Content -LiteralPath $script:settingsPath -Raw
+        foreach ($marker in @(
+            'DetectionMode = "StrictEvidence"',
+            'RequireCapturedArpRequest = true',
+            'RequireCorrelatedArpResponses = true',
+            'FailClosedWithoutCapture = true',
+            'MaxConcurrentVerifications = 1',
+            '_sensitiveConfirmationArmed',
+            'SensitiveFingerprint',
+            'CONFIRMAR E SALVAR'
+        )) {
+            Assert-StrictMatch $settings ([regex]::Escape($marker)) "protected settings marker $marker is present"
+        }
+    }
+
+    It 'applies changes on the next worker and resolves Output Directory consistently' {
+        $settings = Get-Content -LiteralPath $script:settingsPath -Raw
+        $portable = Get-Content -LiteralPath $script:portablePath -Raw
+        $gui = Get-Content -LiteralPath $script:guiPath -Raw
+        Assert-StrictMatch $settings 'próxima análise' 'settings explain deferred worker application'
+        Assert-StrictMatch $settings 'public static string ResolveOutputDirectory\(\)' 'output resolver exists'
+        Assert-StrictMatch $portable 'ConfigurationStore\.ResolveOutputDirectory' 'status uses configured output root'
+        Assert-StrictMatch $gui 'ConfigurationStore\.ResolveOutputDirectory' 'dashboard and reports use configured output root'
+        Assert-StrictMatch (Get-Content -LiteralPath $script:buildPath -Raw) 'notepad\.exe.*FillEllipse.*DrawEllipse' 'build blocks legacy editor and circular decoration markers'
+    }
+
+    It 'keeps invalid profiles recoverable and disposes detached sections' {
+        $settings = Get-Content -LiteralPath $script:settingsPath -Raw
+        Assert-StrictMatch $settings 'catch \(Exception exception\)[\s\S]*?_dirty = true;[\s\S]*?_saveButton\.Enabled = true;[\s\S]*?PERFIL PRECISA SER RECRIADO' 'invalid profile loads safe editable defaults'
+        Assert-StrictMatch $settings 'private void LoadDefaults\(\)[\s\S]*?_saveButton\.Enabled = true;' 'loading defaults always restores save capability'
+        Assert-StrictMatch $settings 'protected override void Dispose\(bool disposing\)[\s\S]*?_sections\.Values\.ToArray\(\)[\s\S]*?_sections\.Clear\(\)' 'detached settings sections are disposed explicitly'
+    }
+
+    It 'preserves the complete validated integer domain without overflow' {
+        $settings = Get-Content -LiteralPath $script:settingsPath -Raw
+        $native = Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NativeMonitor.cs') -Raw
+        foreach ($marker in @(
+            '_intervalSeconds = CreateNumber(1, Int32.MaxValue',
+            '_pingTimeout = CreateNumber(50, Int32.MaxValue',
+            '_arpProbeRate = CreateNumber(100, Int32.MaxValue',
+            '_logMaxMb = CreateNumber(1, Int32.MaxValue'
+        )) {
+            Assert-StrictMatch $settings ([regex]::Escape($marker)) "full numeric domain marker $marker is present"
+        }
+        Assert-StrictMatch $native 'long remainingMilliseconds = Math\.Max\(1L,[\s\S]*?\* 1000L' 'cycle interval multiplication uses 64-bit arithmetic'
+        Assert-StrictMatch $native 'WaitCancelable\(EventWaitHandle stopEvent, long milliseconds\)' 'long waits remain cancelable'
+    }
+
+    It 'keeps dashboard navigation coherent and stops the worker only after a real close' {
+        $gui = Get-Content -LiteralPath $script:guiPath -Raw
+        Assert-StrictMatch $gui 'FormClosed \+= delegate \{ StopWorker\(false\); \};' 'worker stops after the form actually closes'
+        $closing = [regex]::Match($gui, 'private void HandleFormClosing[\s\S]*?private static List<string> ParseCsv').Value
+        Assert-StrictNoMatch $closing 'StopWorker' 'a canceled close does not stop the worker'
+        Assert-StrictMatch $gui 'ShowWorkspacePage\(_dashboardContent, _overviewNavigation\); OpenReports\(\);' 'reports restores dashboard content and selection together'
+    }
+}
+
 Describe 'Compiled Strict Evidence executable' {
     BeforeAll {
         $script:projectRoot = Split-Path $PSScriptRoot -Parent
         $script:exe = Join-Path $script:projectRoot 'dist\IPConflictMonitor.exe'
     }
 
-    It 'reports version 3.3.1.0' {
+    It 'reports version 3.4.0.0' {
         Assert-StrictTrue (Test-Path -LiteralPath $script:exe) 'compiled executable exists'
-        Assert-StrictEqual (Get-Item -LiteralPath $script:exe).VersionInfo.FileVersion '3.3.1.0' 'compiled executable version is correct'
+        Assert-StrictEqual (Get-Item -LiteralPath $script:exe).VersionInfo.FileVersion '3.4.0.0' 'compiled executable version is correct'
     }
 
     It 'passes all synthetic detection scenarios' {
@@ -218,16 +335,12 @@ Describe 'Compiled Strict Evidence executable' {
             return $false
         }
         $bytes = [IO.File]::ReadAllBytes($script:exe)
-        foreach ($marker in @('MONITORING_LIMITED','UNVERIFIED','STRICT_PROOF','-SelfTestDetection','-UpdateScreenshot','UpdateExperiencePage','EvidenceHash','PairCandidates','ClearDynamicNeighbors')) {
+        foreach ($marker in @('MONITORING_LIMITED','UNVERIFIED','STRICT_PROOF','-SelfTestDetection','-UpdateScreenshot','-SettingsScreenshot','UpdateExperiencePage','SettingsExperiencePage','ConfigurationStore','EvidenceHash','PairCandidates','ClearDynamicNeighbors')) {
             $asciiMarker = [Text.Encoding]::ASCII.GetBytes($marker)
             $unicodeMarker = [Text.Encoding]::Unicode.GetBytes($marker)
             Assert-StrictTrue ((Test-BinarySequence $bytes $asciiMarker) -or (Test-BinarySequence $bytes $unicodeMarker)) "binary marker $marker is present"
         }
     }
 }
-
-
-
-
 
 

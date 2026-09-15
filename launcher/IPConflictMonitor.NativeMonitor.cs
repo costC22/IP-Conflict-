@@ -276,7 +276,7 @@ namespace IPConflictMonitor.Launcher
                     DetectionHealth health = BuildHealth(tshark, captureInterface, selected, config.Monitoring.ActiveArpProbeEnabled);
                     StrictPolicy policy = BuildPolicy(config);
 
-                    WriteLog(logPath, config.Output, "INFO", "Strict Evidence Detection Engine 3.3.1 iniciado. Historico/cache/ICMP nao podem produzir CONFIRMED.");
+                    WriteLog(logPath, config.Output, "INFO", "Strict Evidence Detection Engine 3.4.0 iniciado. Historico/cache/ICMP nao podem produzir CONFIRMED.");
                     WriteLog(logPath, config.Output, "INFO", "SelectedInterfaceName=" + selected.Adapter.Name + "; SelectedInterfaceIndex=" + selected.InterfaceIndex + "; SelectedInterfaceIPv4=" + selected.Address + "; SelectedInterfaceMac=" + selected.Mac + "; SelectedInterfaceCidr=" + selected.Cidr + "; SelectionReason=" + selected.SelectionReason + ".");
                     WriteLog(logPath, config.Output, health.StrictVerificationReady ? "INFO" : "WARN", "Capture Engine=" + health.Summary + "; Npcap=" + (health.NpcapAvailable ? "OK" : "INDISPONIVEL") + "; TShark=" + (health.TsharkAvailable ? "OK" : "INDISPONIVEL") + "; Strict Verification=" + (health.StrictVerificationReady ? "READY" : "MONITORING_LIMITED") + ".");
                     if (!selected.ConfiguredNetworkReachable) { WriteLog(logPath, config.Output, "WARN", "configured network not reachable through selected interface"); }
@@ -340,8 +340,9 @@ namespace IPConflictMonitor.Launcher
                             if (once) { throw; }
                         }
                         if (once || stopEvent.WaitOne(0)) { break; }
-                        int elapsed = (int)(DateTime.UtcNow - cycleStartUtc).TotalSeconds;
-                        WaitCancelable(stopEvent, Math.Max(1, config.Monitoring.IntervalSeconds - elapsed) * 1000);
+                        long elapsed = (long)(DateTime.UtcNow - cycleStartUtc).TotalSeconds;
+                        long remainingMilliseconds = Math.Max(1L, (long)config.Monitoring.IntervalSeconds - elapsed) * 1000L;
+                        WaitCancelable(stopEvent, remainingMilliseconds);
                     }
                     while (!stopEvent.WaitOne(0));
                     return 0;
@@ -802,8 +803,16 @@ namespace IPConflictMonitor.Launcher
         private static string NewEvidenceId() { long sequence = Interlocked.Increment(ref _evidenceSequence); return "EVD-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + sequence.ToString("D5"); }
         private static bool IsAdministrator() { try { using (WindowsIdentity identity = WindowsIdentity.GetCurrent()) { return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator); } } catch { return false; } }
         private static bool HasSwitch(string[] args, params string[] names) { foreach (string argument in args) { foreach (string name in names) { if (String.Equals(argument, name, StringComparison.OrdinalIgnoreCase)) { return true; } } } return false; }
-        private static void WaitCancelable(EventWaitHandle stopEvent, int milliseconds) { if (milliseconds <= 0) { return; } stopEvent.WaitOne(milliseconds); }
+        private static void WaitCancelable(EventWaitHandle stopEvent, long milliseconds)
+        {
+            if (milliseconds <= 0) { return; }
+            long remaining = milliseconds;
+            while (remaining > 0 && !stopEvent.WaitOne(0))
+            {
+                int slice = (int)Math.Min(remaining, 60000L);
+                if (stopEvent.WaitOne(slice)) { return; }
+                remaining -= slice;
+            }
+        }
     }
 }
-
-

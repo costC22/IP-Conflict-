@@ -87,7 +87,7 @@ namespace IPConflictMonitor.Launcher
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
             var button = new Button
             {
-                Text = "↻  VERIFICAR ATUALIZAÇÃO",
+                Text = "[UP]  VERIFICAR ATUALIZAÇÃO",
                 Dock = DockStyle.Fill,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.FromArgb(16, 48, 66),
@@ -139,6 +139,8 @@ namespace IPConflictMonitor.Launcher
 
         private static void BeginUpdateCheck(Form form, Button button)
         {
+            Program.NetworkOperationsForm operations = form as Program.NetworkOperationsForm;
+            if (operations != null && !operations.TryEnterUpdatePage()) { return; }
             UpdatePageSession session;
             try
             {
@@ -147,8 +149,9 @@ namespace IPConflictMonitor.Launcher
             }
             catch (Exception exception)
             {
+                if (operations != null) { operations.LeaveUpdatePage(); }
                 button.Enabled = true;
-                button.Text = "↻  VERIFICAR ATUALIZAÇÃO";
+                button.Text = "[UP]  VERIFICAR ATUALIZAÇÃO";
                 WriteUpdateLog("Falha ao abrir a experiência de atualização: " + exception);
             }
         }
@@ -214,10 +217,12 @@ namespace IPConflictMonitor.Launcher
                 session.Page = null;
             }
             session.PreviousContent.Visible = true;
+            Program.NetworkOperationsForm operations = session.Form as Program.NetworkOperationsForm;
+            if (operations != null) { operations.LeaveUpdatePage(); }
             if (session.Trigger != null)
             {
                 session.Trigger.Enabled = true;
-                session.Trigger.Text = "↻  VERIFICAR ATUALIZAÇÃO";
+                session.Trigger.Text = "[UP]  VERIFICAR ATUALIZAÇÃO";
                 session.Trigger.Select();
             }
         }
@@ -240,7 +245,7 @@ namespace IPConflictMonitor.Launcher
                     UpdateCheckResult result = task.Result;
                     if (!result.UpdateAvailable)
                     {
-                        if (session.Trigger != null) { session.Trigger.Text = "✓  SISTEMA ATUALIZADO"; }
+                        if (session.Trigger != null) { session.Trigger.Text = "[OK]  SISTEMA ATUALIZADO"; }
                         session.Page.ShowUpToDate(result.CurrentVersion, delegate { CloseUpdatePage(session); });
                         return;
                     }
@@ -324,12 +329,20 @@ namespace IPConflictMonitor.Launcher
                 AttachToForm(form);
                 form.PreparePreview();
                 Application.DoEvents();
+                if (!form.TryEnterUpdatePage()) { throw new InvalidOperationException("A navegação não pôde ser reservada para a atualização."); }
                 UpdatePageSession session = OpenUpdatePage(form, null);
                 session.Page.ShowPreview();
                 Application.DoEvents();
                 using (var bitmap = new Bitmap(form.Width, form.Height))
                 {
                     form.DrawToBitmap(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
+                    TableLayoutPanel sidebar = FindSidebar(form);
+                    if (sidebar != null)
+                    {
+                        Point screenLocation = sidebar.PointToScreen(Point.Empty);
+                        Rectangle sidebarBounds = new Rectangle(screenLocation.X - form.Left, screenLocation.Y - form.Top, sidebar.Width, sidebar.Height);
+                        sidebar.DrawToBitmap(bitmap, sidebarBounds);
+                    }
                     bitmap.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
                 }
                 session.AllowFormClose = true;
@@ -594,7 +607,7 @@ namespace IPConflictMonitor.Launcher
         {
             var request = (HttpWebRequest)WebRequest.Create(url);
             request.Method = "GET";
-            request.UserAgent = "IPConflictMonitor-Updater/3.3.1";
+            request.UserAgent = "IPConflictMonitor-Updater/3.4.0";
             request.Accept = "application/vnd.github+json";
             request.Timeout = 12000;
             request.ReadWriteTimeout = 12000;
@@ -610,7 +623,7 @@ namespace IPConflictMonitor.Launcher
             {
                 var request = (HttpWebRequest)WebRequest.Create(url);
                 request.Method = "GET";
-                request.UserAgent = "IPConflictMonitor-Updater/3.3.1";
+                request.UserAgent = "IPConflictMonitor-Updater/3.4.0";
                 request.Timeout = 30000;
                 request.ReadWriteTimeout = 30000;
                 using (WebResponse response = request.GetResponse())
@@ -728,10 +741,3 @@ namespace IPConflictMonitor.Launcher
         }
     }
 }
-
-
-
-
-
-
-

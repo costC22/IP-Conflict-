@@ -14,12 +14,17 @@ $manifest = Join-Path $PSScriptRoot 'launcher\app.portable.manifest'
 $readme = Join-Path $PSScriptRoot 'README.md'
 $strictSource = Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.StrictEvidence.cs'
 $nativeSource = Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.NativeMonitor.cs'
+$portableSource = Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.PortableLauncher.cs'
+$guiSource = Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.NeonGui.cs'
+$updateExperienceSource = Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.UpdateExperience.cs'
+$settingsSource = Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.SettingsExperience.cs'
 $sources = @(
-    (Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.PortableLauncher.cs'),
+    $portableSource,
     $strictSource,
     $nativeSource,
-    (Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.NeonGui.cs'),
-    (Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.UpdateExperience.cs'),
+    $guiSource,
+    $updateExperienceSource,
+    $settingsSource,
     (Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.Updater.cs')
 )
 
@@ -37,9 +42,11 @@ if ($configuration.Monitoring.DetectionMode -ne 'StrictEvidence' -or
 
 $strictText = Get-Content -LiteralPath $strictSource -Raw
 $nativeText = Get-Content -LiteralPath $nativeSource -Raw
-$guiText = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw
+$portableText = Get-Content -LiteralPath $portableSource -Raw
+$guiText = Get-Content -LiteralPath $guiSource -Raw
 $updaterText = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.Updater.cs') -Raw
-$updateExperienceText = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.UpdateExperience.cs') -Raw
+$updateExperienceText = Get-Content -LiteralPath $updateExperienceSource -Raw
+$settingsText = Get-Content -LiteralPath $settingsSource -Raw
 if (($strictText | Select-String -Pattern 'decision\.State\s*=\s*StrictDetectionState\.CONFIRMED' -AllMatches).Matches.Count -ne 1) {
     throw 'Regression gate: deve existir exatamente um caminho decisorio que atribui CONFIRMED.'
 }
@@ -59,6 +66,22 @@ foreach ($requiredUpdateMarker in @('UpdateExperiencePage', 'GetControlFromPosit
     }
 }
 if ($updaterText.IndexOf('MessageBox.Show', [StringComparison]::Ordinal) -ge 0) { throw 'Regression gate: o fluxo de atualização não pode usar diálogos nativos.' }
+$uiText = $guiText + $updateExperienceText + $settingsText
+foreach ($forbiddenUiMarker in @('notepad.exe', 'FillEllipse', 'DrawEllipse', '●', '◉')) {
+    if ($uiText.IndexOf($forbiddenUiMarker, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        throw "Regression gate: marcador visual/fluxo legado encontrado na interface: $forbiddenUiMarker"
+    }
+}
+foreach ($requiredSettingsMarker in @('SettingsExperiencePage', 'ConfigurationStore', 'ResolveActivePath', 'ResolveOutputDirectory', 'File.Replace', '.previous', 'CONFIRMAR E SALVAR', 'ComboBoxStyle.DropDownList')) {
+    if ($settingsText.IndexOf($requiredSettingsMarker, [StringComparison]::Ordinal) -lt 0) {
+        throw "Regression gate: marcador da configuração integrada ausente: $requiredSettingsMarker"
+    }
+}
+if ($portableText.IndexOf('ConfigurationStore.ResolveActivePath', [StringComparison]::Ordinal) -lt 0 -or
+    $portableText.IndexOf('ConfigurationStore.ResolveOutputDirectory', [StringComparison]::Ordinal) -lt 0 -or
+    $guiText.IndexOf('ConfigurationStore.ResolveOutputDirectory', [StringComparison]::Ordinal) -lt 0) {
+    throw 'Regression gate: configuração e Output.Directory devem ter resolução canônica em launcher, status e painel.'
+}
 
 $compiler = @(
     "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
@@ -72,9 +95,10 @@ New-Item -ItemType Directory -Path $configOutput -Force | Out-Null
 $exe = Join-Path $OutputDirectory 'IPConflictMonitor.exe'
 $preview = Join-Path $OutputDirectory 'IPConflictMonitor-dashboard.png'
 $updatePreview = Join-Path $OutputDirectory 'IPConflictMonitor-update.png'
+$settingsPreview = Join-Path $OutputDirectory 'IPConflictMonitor-settings.png'
 $zip = Join-Path $OutputDirectory 'IPConflictMonitor-Windows.zip'
 $hashFile = Join-Path $OutputDirectory 'IPConflictMonitor.exe.sha256'
-foreach ($artifact in @($exe, $preview, $updatePreview, $zip, $hashFile)) {
+foreach ($artifact in @($exe, $preview, $updatePreview, $settingsPreview, $zip, $hashFile)) {
     if (Test-Path -LiteralPath $artifact) { Remove-Item -LiteralPath $artifact -Force }
 }
 
@@ -107,7 +131,7 @@ if ($LASTEXITCODE -ne 0) { throw "Validacao de configuracao falhou com codigo $L
 $help = & $exe -Help | Out-String
 $status = & $exe -Status | Out-String
 if ($help -notmatch 'Strict Evidence Detection' -or $status -notmatch 'fail-closed') { throw 'O executavel nao confirmou a politica Strict Evidence.' }
-if ((Get-Item -LiteralPath $exe).VersionInfo.FileVersion -ne '3.3.1.0') { throw 'A versao compilada nao e 3.3.1.0.' }
+if ((Get-Item -LiteralPath $exe).VersionInfo.FileVersion -ne '3.4.0.0') { throw 'A versao compilada nao e 3.4.0.0.' }
 
 $assembly = [Reflection.Assembly]::Load([IO.File]::ReadAllBytes($exe))
 $resources = $assembly.GetManifestResourceNames()
@@ -133,7 +157,7 @@ foreach ($indicator in @('ExecutionPolicy', 'powershell.exe', 'schtasks.exe')) {
         throw "Indicador legado encontrado no EXE: $indicator"
     }
 }
-foreach ($marker in @('ANALISAR REDE', 'STRICT_PROOF', '-SelfTestDetection', '-CheckUpdate', '-ApplyUpdate', '-UpdateScreenshot', 'UpdateExperiencePage', 'IPConflictMonitor-Windows.zip')) {
+foreach ($marker in @('ANALISAR REDE', 'STRICT_PROOF', '-SelfTestDetection', '-CheckUpdate', '-ApplyUpdate', '-UpdateScreenshot', '-SettingsScreenshot', 'UpdateExperiencePage', 'SettingsExperiencePage', 'ConfigurationStore', 'IPConflictMonitor-Windows.zip')) {
     $asciiMarker = [Text.Encoding]::ASCII.GetBytes($marker)
     $unicodeMarker = [Text.Encoding]::Unicode.GetBytes($marker)
     if (-not (Test-ByteSequence $bytes $asciiMarker) -and -not (Test-ByteSequence $bytes $unicodeMarker)) {
@@ -145,6 +169,8 @@ foreach ($marker in @('ANALISAR REDE', 'STRICT_PROOF', '-SelfTestDetection', '-C
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $preview)) { throw 'A renderizacao da interface falhou.' }
 & $exe -UpdateScreenshot $updatePreview
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $updatePreview)) { throw 'A renderizacao da pagina de atualizacao falhou.' }
+& $exe -SettingsScreenshot $settingsPreview
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $settingsPreview)) { throw 'A renderizacao da pagina de configuracao falhou.' }
 
 if (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
     $certificate = Get-ChildItem -Path Cert:\CurrentUser\My, Cert:\LocalMachine\My -CodeSigningCert |
@@ -161,9 +187,8 @@ $signature = Get-AuthenticodeSignature -LiteralPath $exe
 Write-Host "Executavel portatil: $exe" -ForegroundColor Green
 Write-Host "Pacote: $zip" -ForegroundColor Green
 Write-Host "Preview da atualização: $updatePreview" -ForegroundColor Cyan
+Write-Host "Preview da configuração: $settingsPreview" -ForegroundColor Cyan
 Write-Host "SHA-256: $($hash.Hash)" -ForegroundColor Cyan
 Write-Host "Self-Test: 24 passed / 0 failed" -ForegroundColor Green
 Write-Host "Regression Gate: PASS" -ForegroundColor Green
 Write-Host "Assinatura: $($signature.Status)" -ForegroundColor $(if ($signature.Status -eq 'Valid') { 'Green' } else { 'Yellow' })
-
-
