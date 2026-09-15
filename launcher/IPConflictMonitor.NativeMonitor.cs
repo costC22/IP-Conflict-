@@ -276,7 +276,7 @@ namespace IPConflictMonitor.Launcher
                     DetectionHealth health = BuildHealth(tshark, captureInterface, selected, config.Monitoring.ActiveArpProbeEnabled);
                     StrictPolicy policy = BuildPolicy(config);
 
-                    WriteLog(logPath, config.Output, "INFO", "Strict Evidence Detection Engine 3.3 iniciado. Historico/cache/ICMP nao podem produzir CONFIRMED.");
+                    WriteLog(logPath, config.Output, "INFO", "Strict Evidence Detection Engine 3.3.1 iniciado. Historico/cache/ICMP nao podem produzir CONFIRMED.");
                     WriteLog(logPath, config.Output, "INFO", "SelectedInterfaceName=" + selected.Adapter.Name + "; SelectedInterfaceIndex=" + selected.InterfaceIndex + "; SelectedInterfaceIPv4=" + selected.Address + "; SelectedInterfaceMac=" + selected.Mac + "; SelectedInterfaceCidr=" + selected.Cidr + "; SelectionReason=" + selected.SelectionReason + ".");
                     WriteLog(logPath, config.Output, health.StrictVerificationReady ? "INFO" : "WARN", "Capture Engine=" + health.Summary + "; Npcap=" + (health.NpcapAvailable ? "OK" : "INDISPONIVEL") + "; TShark=" + (health.TsharkAvailable ? "OK" : "INDISPONIVEL") + "; Strict Verification=" + (health.StrictVerificationReady ? "READY" : "MONITORING_LIMITED") + ".");
                     if (!selected.ConfiguredNetworkReachable) { WriteLog(logPath, config.Output, "WARN", "configured network not reachable through selected interface"); }
@@ -805,3 +805,5 @@ namespace IPConflictMonitor.Launcher
         private static void WaitCancelable(EventWaitHandle stopEvent, int milliseconds) { if (milliseconds <= 0) { return; } stopEvent.WaitOne(milliseconds); }
     }
 }
+
+

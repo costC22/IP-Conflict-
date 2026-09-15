@@ -19,6 +19,7 @@ $sources = @(
     $strictSource,
     $nativeSource,
     (Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.NeonGui.cs'),
+    (Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.UpdateExperience.cs'),
     (Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.Updater.cs')
 )
 
@@ -37,6 +38,8 @@ if ($configuration.Monitoring.DetectionMode -ne 'StrictEvidence' -or
 $strictText = Get-Content -LiteralPath $strictSource -Raw
 $nativeText = Get-Content -LiteralPath $nativeSource -Raw
 $guiText = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw
+$updaterText = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.Updater.cs') -Raw
+$updateExperienceText = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'launcher\IPConflictMonitor.UpdateExperience.cs') -Raw
 if (($strictText | Select-String -Pattern 'decision\.State\s*=\s*StrictDetectionState\.CONFIRMED' -AllMatches).Matches.Count -ne 1) {
     throw 'Regression gate: deve existir exatamente um caminho decisorio que atribui CONFIRMED.'
 }
@@ -50,6 +53,12 @@ foreach ($required in @('EvaluateConflict', 'PairCandidates', 'RequireCapturedAr
         throw "Regression gate: marcador Strict Evidence ausente: $required"
     }
 }
+foreach ($requiredUpdateMarker in @('UpdateExperiencePage', 'GetControlFromPosition(1, 0)', 'ShowFailure', 'ShowRestarting', 'expectedSize', 'output.Flush(true)', '.previous')) {
+    if (($updaterText + $updateExperienceText).IndexOf($requiredUpdateMarker, [StringComparison]::Ordinal) -lt 0) {
+        throw "Regression gate: marcador de atualização assistida ausente: $requiredUpdateMarker"
+    }
+}
+if ($updaterText.IndexOf('MessageBox.Show', [StringComparison]::Ordinal) -ge 0) { throw 'Regression gate: o fluxo de atualização não pode usar diálogos nativos.' }
 
 $compiler = @(
     "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
@@ -62,9 +71,10 @@ $configOutput = Join-Path $OutputDirectory 'config'
 New-Item -ItemType Directory -Path $configOutput -Force | Out-Null
 $exe = Join-Path $OutputDirectory 'IPConflictMonitor.exe'
 $preview = Join-Path $OutputDirectory 'IPConflictMonitor-dashboard.png'
+$updatePreview = Join-Path $OutputDirectory 'IPConflictMonitor-update.png'
 $zip = Join-Path $OutputDirectory 'IPConflictMonitor-Windows.zip'
 $hashFile = Join-Path $OutputDirectory 'IPConflictMonitor.exe.sha256'
-foreach ($artifact in @($exe, $preview, $zip, $hashFile)) {
+foreach ($artifact in @($exe, $preview, $updatePreview, $zip, $hashFile)) {
     if (Test-Path -LiteralPath $artifact) { Remove-Item -LiteralPath $artifact -Force }
 }
 
@@ -97,28 +107,44 @@ if ($LASTEXITCODE -ne 0) { throw "Validacao de configuracao falhou com codigo $L
 $help = & $exe -Help | Out-String
 $status = & $exe -Status | Out-String
 if ($help -notmatch 'Strict Evidence Detection' -or $status -notmatch 'fail-closed') { throw 'O executavel nao confirmou a politica Strict Evidence.' }
-if ((Get-Item -LiteralPath $exe).VersionInfo.FileVersion -ne '3.3.0.0') { throw 'A versao compilada nao e 3.3.0.0.' }
+if ((Get-Item -LiteralPath $exe).VersionInfo.FileVersion -ne '3.3.1.0') { throw 'A versao compilada nao e 3.3.1.0.' }
 
 $assembly = [Reflection.Assembly]::Load([IO.File]::ReadAllBytes($exe))
 $resources = $assembly.GetManifestResourceNames()
 if (@($resources).Count -ne 1 -or $resources[0] -ne 'IPConflictMonitor.DefaultConfig.json') { throw "Recursos inesperados no EXE: $($resources -join ', ')" }
 
+function Test-ByteSequence {
+    param([byte[]]$Haystack, [byte[]]$Needle)
+    if (-not $Needle -or $Needle.Length -eq 0 -or $Needle.Length -gt $Haystack.Length) { return $false }
+    for ($offset = 0; $offset -le $Haystack.Length - $Needle.Length; $offset++) {
+        $match = $true
+        for ($index = 0; $index -lt $Needle.Length; $index++) {
+            if ($Haystack[$offset + $index] -ne $Needle[$index]) { $match = $false; break }
+        }
+        if ($match) { return $true }
+    }
+    return $false
+}
 $bytes = [IO.File]::ReadAllBytes($exe)
-$ascii = [Text.Encoding]::ASCII.GetString($bytes)
-$unicode = [Text.Encoding]::Unicode.GetString($bytes)
 foreach ($indicator in @('ExecutionPolicy', 'powershell.exe', 'schtasks.exe')) {
-    if ($ascii.IndexOf($indicator, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or $unicode.IndexOf($indicator, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+    $asciiIndicator = [Text.Encoding]::ASCII.GetBytes($indicator)
+    $unicodeIndicator = [Text.Encoding]::Unicode.GetBytes($indicator)
+    if ((Test-ByteSequence $bytes $asciiIndicator) -or (Test-ByteSequence $bytes $unicodeIndicator)) {
         throw "Indicador legado encontrado no EXE: $indicator"
     }
 }
-foreach ($marker in @('ANALISAR REDE', 'STRICT_PROOF', '-SelfTestDetection', '-CheckUpdate', '-ApplyUpdate', 'IPConflictMonitor-Windows.zip')) {
-    if ($ascii.IndexOf($marker, [StringComparison]::Ordinal) -lt 0 -and $unicode.IndexOf($marker, [StringComparison]::Ordinal) -lt 0) {
+foreach ($marker in @('ANALISAR REDE', 'STRICT_PROOF', '-SelfTestDetection', '-CheckUpdate', '-ApplyUpdate', '-UpdateScreenshot', 'UpdateExperiencePage', 'IPConflictMonitor-Windows.zip')) {
+    $asciiMarker = [Text.Encoding]::ASCII.GetBytes($marker)
+    $unicodeMarker = [Text.Encoding]::Unicode.GetBytes($marker)
+    if (-not (Test-ByteSequence $bytes $asciiMarker) -and -not (Test-ByteSequence $bytes $unicodeMarker)) {
         throw "Marcador obrigatorio ausente no EXE: $marker"
     }
 }
 
 & $exe -GuiScreenshot $preview
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $preview)) { throw 'A renderizacao da interface falhou.' }
+& $exe -UpdateScreenshot $updatePreview
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $updatePreview)) { throw 'A renderizacao da pagina de atualizacao falhou.' }
 
 if (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
     $certificate = Get-ChildItem -Path Cert:\CurrentUser\My, Cert:\LocalMachine\My -CodeSigningCert |
@@ -134,7 +160,10 @@ $hash = Get-FileHash -LiteralPath $exe -Algorithm SHA256
 $signature = Get-AuthenticodeSignature -LiteralPath $exe
 Write-Host "Executavel portatil: $exe" -ForegroundColor Green
 Write-Host "Pacote: $zip" -ForegroundColor Green
+Write-Host "Preview da atualização: $updatePreview" -ForegroundColor Cyan
 Write-Host "SHA-256: $($hash.Hash)" -ForegroundColor Cyan
 Write-Host "Self-Test: 24 passed / 0 failed" -ForegroundColor Green
 Write-Host "Regression Gate: PASS" -ForegroundColor Green
 Write-Host "Assinatura: $($signature.Status)" -ForegroundColor $(if ($signature.Status -eq 'Valid') { 'Green' } else { 'Yellow' })
+
+

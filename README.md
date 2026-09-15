@@ -1,6 +1,6 @@
-# IPConflictMonitor 3.3 — Strict Evidence Detection
+# IPConflictMonitor 3.3.1 — Strict Evidence Detection
 
-Ferramenta portátil para Windows destinada a verificar conflitos IPv4 no mesmo domínio de camada 2. A versão 3.3 adota uma política conservadora: informação ambígua nunca é apresentada como conflito.
+Ferramenta portátil para Windows destinada a verificar conflitos IPv4 no mesmo domínio de camada 2. A versão 3.3.1 mantém a política conservadora de detecção e adiciona uma atualização assistida dentro do painel: informação ambígua nunca é apresentada como conflito.
 
 > Um conflito somente é confirmado quando requisições ARP geradas pelo monitor recebem respostas contemporâneas, correlacionadas, repetidas e consistentes de dois endereços MAC distintos para o mesmo IPv4.
 
@@ -171,7 +171,7 @@ validação estática da política
 → 24 self-tests
 → validação da configuração
 → validação do binário
-→ renderização da GUI
+→ renderização do dashboard e da página de atualização
 → pacote ZIP e SHA-256
 ```
 
@@ -183,7 +183,11 @@ Para assinar com um certificado instalado:
 
 ## Atualização pelo aplicativo
 
-O botão **Verificar atualização** consulta a release pública mais recente quando acionado. O download usa HTTPS, valida o SHA-256, substitui o executável com backup e restaura a versão anterior se a verificação final falhar. Nenhuma credencial é incorporada ao EXE.
+O botão **Verificar atualização** abre uma página na área principal do próprio sistema. O fluxo apresenta cinco etapas reais: **Consulta**, **Download**, **Integridade**, **Instalação** e **Reinício**. O download mostra percentual somente quando o total de bytes é conhecido; as demais etapas usam progresso indeterminado e texto descritivo.
+
+O download usa HTTPS, confere o tamanho publicado, grava primeiro em arquivo `.part`, força flush em disco e valida o SHA-256 e a versão interna antes de instalar. O processo auxiliar mantém a mesma identidade visual enquanto o executável principal é fechado, cria o backup `.previous`, verifica novamente o arquivo instalado e restaura a versão anterior se a confirmação final falhar.
+
+Erros permanecem na página com **Tentar novamente** e **Voltar ao painel**. Durante uma etapa crítica, o fechamento é temporariamente bloqueado e a justificativa aparece na própria interface. Nenhuma credencial é incorporada ao EXE.
 
 ## Troubleshooting
 
