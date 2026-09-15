@@ -1,0 +1,511 @@
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+
+namespace IPConflictMonitor.Launcher
+{
+    internal static class FieldTheme
+    {
+        public static readonly Color Canvas = Color.FromArgb(6, 12, 23);
+        public static readonly Color Sidebar = Color.FromArgb(8, 17, 31);
+        public static readonly Color Surface = Color.FromArgb(13, 25, 44);
+        public static readonly Color SurfaceRaised = Color.FromArgb(17, 32, 54);
+        public static readonly Color Stroke = Color.FromArgb(37, 58, 82);
+        public static readonly Color MainText = Color.FromArgb(237, 245, 253);
+        public static readonly Color SoftText = Color.FromArgb(142, 166, 195);
+        public static readonly Color MutedText = Color.FromArgb(86, 116, 146);
+        public static readonly Color Cyan = Color.FromArgb(43, 213, 237);
+        public static readonly Color Blue = Color.FromArgb(75, 125, 255);
+        public static readonly Color Purple = Color.FromArgb(158, 102, 255);
+        public static readonly Color Green = Color.FromArgb(55, 222, 151);
+        public static readonly Color Amber = Color.FromArgb(249, 184, 68);
+        public static readonly Color Red = Color.FromArgb(255, 88, 113);
+    }
+
+    internal enum UpdateStage
+    {
+        Check = 0,
+        Download = 1,
+        Integrity = 2,
+        Install = 3,
+        Restart = 4
+    }
+
+    internal sealed class UpdateProgressInfo
+    {
+        public UpdateStage Stage;
+        public string Title;
+        public string Description;
+        public int Percent = -1;
+    }
+
+    internal sealed class UpdateActionButton : Button
+    {
+        private bool _hover;
+        public Color StartColor { get; set; }
+        public Color EndColor { get; set; }
+        public Color HoverStartColor { get; set; }
+        public Color HoverEndColor { get; set; }
+        public Color BorderColor { get; set; }
+
+        public UpdateActionButton()
+        {
+            StartColor = FieldTheme.Cyan;
+            EndColor = FieldTheme.Blue;
+            HoverStartColor = Color.FromArgb(74, 226, 245);
+            HoverEndColor = Color.FromArgb(98, 145, 255);
+            BorderColor = Color.Transparent;
+            ForeColor = Color.FromArgb(4, 25, 38);
+            Font = new Font("Segoe UI Semibold", 9F);
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            Cursor = Cursors.Hand;
+            Height = 46;
+            MinimumSize = new Size(160, 44);
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        }
+
+        protected override void OnMouseEnter(EventArgs eventArgs) { _hover = true; Invalidate(); base.OnMouseEnter(eventArgs); }
+        protected override void OnMouseLeave(EventArgs eventArgs) { _hover = false; Invalidate(); base.OnMouseLeave(eventArgs); }
+
+        protected override void OnPaint(PaintEventArgs eventArgs)
+        {
+            eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle bounds = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+            Color first = Enabled ? (_hover ? HoverStartColor : StartColor) : Color.FromArgb(45, 57, 75);
+            Color second = Enabled ? (_hover ? HoverEndColor : EndColor) : Color.FromArgb(38, 49, 66);
+            using (GraphicsPath path = Rounded(bounds, 9))
+            using (var gradient = new LinearGradientBrush(bounds, first, second, LinearGradientMode.Horizontal))
+            using (var border = new Pen(BorderColor, 1F))
+            {
+                eventArgs.Graphics.FillPath(gradient, path);
+                if (BorderColor.A > 0) { eventArgs.Graphics.DrawPath(border, path); }
+            }
+            TextRenderer.DrawText(eventArgs.Graphics, Text, Font, bounds, Enabled ? ForeColor : Color.FromArgb(119, 134, 153), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        }
+
+        private static GraphicsPath Rounded(Rectangle rectangle, int radius)
+        {
+            int diameter = Math.Max(2, radius * 2);
+            var path = new GraphicsPath();
+            path.AddArc(rectangle.Left, rectangle.Top, diameter, diameter, 180, 90);
+            path.AddArc(rectangle.Right - diameter, rectangle.Top, diameter, diameter, 270, 90);
+            path.AddArc(rectangle.Right - diameter, rectangle.Bottom - diameter, diameter, diameter, 0, 90);
+            path.AddArc(rectangle.Left, rectangle.Bottom - diameter, diameter, diameter, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+    }
+
+    internal sealed class UpdateSurfacePanel : Panel
+    {
+        public Color AccentColor { get; set; }
+        public bool HeaderTreatment { get; set; }
+
+        public UpdateSurfacePanel()
+        {
+            DoubleBuffered = true;
+            AccentColor = FieldTheme.Cyan;
+            BackColor = FieldTheme.Surface;
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs eventArgs)
+        {
+            Rectangle bounds = ClientRectangle;
+            if (bounds.Width <= 0 || bounds.Height <= 0) { return; }
+            if (HeaderTreatment)
+            {
+                using (var gradient = new LinearGradientBrush(bounds, Color.FromArgb(14, 29, 51), Color.FromArgb(8, 19, 36), LinearGradientMode.Horizontal)) { eventArgs.Graphics.FillRectangle(gradient, bounds); }
+                eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using (var glow = new SolidBrush(Color.FromArgb(24, AccentColor))) { eventArgs.Graphics.FillEllipse(glow, bounds.Width - 330, -145, 390, 250); }
+                using (var line = new Pen(Color.FromArgb(36, 78, 119), 1F))
+                {
+                    Point[] points = { new Point(bounds.Width - 385, 78), new Point(bounds.Width - 302, 32), new Point(bounds.Width - 218, 64), new Point(bounds.Width - 126, 26), new Point(bounds.Width - 38, 52) };
+                    eventArgs.Graphics.DrawLines(line, points);
+                    foreach (Point point in points) { using (var dot = new SolidBrush(Color.FromArgb(135, AccentColor))) { eventArgs.Graphics.FillEllipse(dot, point.X - 3, point.Y - 3, 6, 6); } }
+                }
+            }
+            else
+            {
+                eventArgs.Graphics.Clear(BackColor);
+            }
+            using (var border = new Pen(FieldTheme.Stroke)) { eventArgs.Graphics.DrawRectangle(border, 0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1)); }
+        }
+    }
+
+    internal sealed class UpdateStageRail : Control
+    {
+        private static readonly string[] StageNames = { "CONSULTA", "DOWNLOAD", "INTEGRIDADE", "INSTALAÇÃO", "REINÍCIO" };
+        public int ActiveStage { get; set; }
+        public int CompletedThrough { get; set; }
+        public int ErrorStage { get; set; }
+
+        public UpdateStageRail()
+        {
+            ActiveStage = 0;
+            CompletedThrough = -1;
+            ErrorStage = -1;
+            Height = 96;
+            BackColor = FieldTheme.Canvas;
+            AccessibleRole = AccessibleRole.ProgressBar;
+            AccessibleName = "Etapas da atualização";
+            DoubleBuffered = true;
+        }
+
+        protected override void OnPaint(PaintEventArgs eventArgs)
+        {
+            eventArgs.Graphics.Clear(BackColor);
+            eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            int left = 58;
+            int right = Math.Max(left + 4, Width - 58);
+            int y = 31;
+            int span = Math.Max(1, right - left);
+            using (var track = new Pen(Color.FromArgb(39, 58, 80), 3F)) { eventArgs.Graphics.DrawLine(track, left, y, right, y); }
+            for (int index = 0; index < StageNames.Length; index++)
+            {
+                int x = left + (span * index / (StageNames.Length - 1));
+                if (index > 0 && index <= CompletedThrough)
+                {
+                    int previous = left + (span * (index - 1) / (StageNames.Length - 1));
+                    using (var completed = new Pen(FieldTheme.Green, 3F)) { eventArgs.Graphics.DrawLine(completed, previous, y, x, y); }
+                }
+                Color color = index <= CompletedThrough ? FieldTheme.Green : index == ActiveStage ? FieldTheme.Cyan : FieldTheme.MutedText;
+                if (index == ErrorStage) { color = FieldTheme.Red; }
+                int radius = index == ActiveStage ? 12 : 10;
+                using (var halo = new SolidBrush(Color.FromArgb(index == ActiveStage ? 45 : 24, color))) { eventArgs.Graphics.FillEllipse(halo, x - radius - 4, y - radius - 4, (radius + 4) * 2, (radius + 4) * 2); }
+                using (var fill = new SolidBrush(FieldTheme.Canvas)) { eventArgs.Graphics.FillEllipse(fill, x - radius, y - radius, radius * 2, radius * 2); }
+                using (var stroke = new Pen(color, index == ActiveStage ? 3F : 2F)) { eventArgs.Graphics.DrawEllipse(stroke, x - radius, y - radius, radius * 2, radius * 2); }
+                string symbol = index <= CompletedThrough ? "✓" : (index + 1).ToString();
+                using (var symbolFont = new Font("Segoe UI Semibold", 7.5F)) { TextRenderer.DrawText(eventArgs.Graphics, symbol, symbolFont, new Rectangle(x - 13, y - 11, 26, 22), color, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter); }
+                using (var labelFont = new Font("Segoe UI Semibold", 7F)) { TextRenderer.DrawText(eventArgs.Graphics, StageNames[index], labelFont, new Rectangle(x - 54, y + 22, 108, 22), color, TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.EndEllipsis); }
+            }
+        }
+    }
+
+    internal sealed class UpdateProgressBar : Control
+    {
+        public bool Determinate { get; set; }
+        public int ProgressValue { get; set; }
+        public bool Active { get; set; }
+        public int Phase { get; set; }
+        public Color AccentColor { get; set; }
+
+        public UpdateProgressBar()
+        {
+            Height = 8;
+            AccentColor = FieldTheme.Cyan;
+            AccessibleRole = AccessibleRole.ProgressBar;
+            AccessibleName = "Progresso da atualização";
+            DoubleBuffered = true;
+        }
+
+        protected override void OnPaint(PaintEventArgs eventArgs)
+        {
+            eventArgs.Graphics.Clear(Color.FromArgb(25, 42, 62));
+            if (!Active) { return; }
+            Rectangle fill;
+            if (Determinate)
+            {
+                int width = Math.Max(0, Math.Min(Width, Width * Math.Max(0, Math.Min(100, ProgressValue)) / 100));
+                fill = new Rectangle(0, 0, width, Height);
+                AccessibleDescription = ProgressValue + "% concluído";
+            }
+            else
+            {
+                int segment = Math.Max(90, Width / 4);
+                int x = (Phase % Math.Max(1, Width + segment)) - segment;
+                fill = new Rectangle(x, 0, segment, Height);
+                AccessibleDescription = "Operação em andamento";
+            }
+            if (fill.Width <= 0) { return; }
+            using (var gradient = new LinearGradientBrush(fill, AccentColor, FieldTheme.Blue, LinearGradientMode.Horizontal)) { eventArgs.Graphics.FillRectangle(gradient, fill); }
+        }
+    }
+
+    internal sealed class UpdateExperiencePage : Panel
+    {
+        private readonly Label _eyebrow;
+        private readonly Label _headline;
+        private readonly Label _versionBadge;
+        private readonly Label _statusTitle;
+        private readonly Label _statusDescription;
+        private readonly Label _progressLabel;
+        private readonly Label _versionLine;
+        private readonly Label _notes;
+        private readonly Label _securityLine;
+        private readonly UpdateStageRail _stageRail;
+        private readonly UpdateProgressBar _progress;
+        private readonly UpdateActionButton _primaryButton;
+        private readonly UpdateActionButton _secondaryButton;
+        private readonly Timer _animation;
+        private Action _primaryAction;
+        private Action _secondaryAction;
+        private int _phase;
+
+        public bool Busy { get; private set; }
+
+        public UpdateExperiencePage()
+        {
+            Dock = DockStyle.Fill;
+            BackColor = FieldTheme.Canvas;
+            ForeColor = FieldTheme.MainText;
+            Padding = new Padding(34, 26, 34, 24);
+            Font = new Font("Segoe UI", 9F);
+            AccessibleName = "Atualização do sistema";
+
+            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, BackColor = FieldTheme.Canvas, Margin = new Padding(0), Padding = new Padding(0) };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 116));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 176));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
+            Controls.Add(layout);
+
+            var header = new UpdateSurfacePanel { Dock = DockStyle.Fill, HeaderTreatment = true, AccentColor = FieldTheme.Cyan, Margin = new Padding(0, 0, 0, 12), Padding = new Padding(24, 13, 20, 12) };
+            var headerLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, BackColor = Color.Transparent, Margin = new Padding(0) };
+            headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210));
+            headerLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+            headerLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            _eyebrow = new Label { Text = "CANAL SEGURO  /  ATUALIZAÇÃO ASSISTIDA", Dock = DockStyle.Fill, ForeColor = FieldTheme.Cyan, Font = new Font("Segoe UI Semibold", 7.4F), TextAlign = ContentAlignment.BottomLeft };
+            _headline = new Label { Text = "Atualização do sistema", Dock = DockStyle.Fill, ForeColor = FieldTheme.MainText, Font = new Font("Segoe UI Semibold", 22F), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
+            _versionBadge = new Label { Text = "HTTPS  +  SHA-256", Dock = DockStyle.Fill, ForeColor = FieldTheme.Green, BackColor = Color.FromArgb(9, 33, 39), Font = new Font("Segoe UI Semibold", 8F), TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(16, 14, 0, 14) };
+            headerLayout.Controls.Add(_eyebrow, 0, 0);
+            headerLayout.Controls.Add(_headline, 0, 1);
+            headerLayout.Controls.Add(_versionBadge, 1, 0);
+            headerLayout.SetRowSpan(_versionBadge, 2);
+            header.Controls.Add(headerLayout);
+            layout.Controls.Add(header, 0, 0);
+
+            _stageRail = new UpdateStageRail { Dock = DockStyle.Fill, Margin = new Padding(0, 5, 0, 6) };
+            layout.Controls.Add(_stageRail, 0, 1);
+
+            var status = new UpdateSurfacePanel { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 12), Padding = new Padding(24, 18, 24, 14), AccentColor = FieldTheme.Cyan };
+            var statusLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4, BackColor = FieldTheme.Surface, Margin = new Padding(0) };
+            statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+            statusLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            statusLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            statusLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+            statusLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            _statusTitle = new Label { Text = "Preparando atualização", Dock = DockStyle.Fill, ForeColor = FieldTheme.MainText, Font = new Font("Segoe UI Semibold", 15F), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
+            _statusDescription = new Label { Text = "Aguarde enquanto o sistema prepara o canal seguro.", Dock = DockStyle.Fill, ForeColor = FieldTheme.SoftText, Font = new Font("Segoe UI", 9F), TextAlign = ContentAlignment.TopLeft, AutoEllipsis = true };
+            _progressLabel = new Label { Text = "EM ANDAMENTO", Dock = DockStyle.Fill, ForeColor = FieldTheme.Cyan, Font = new Font("Consolas", 8F, FontStyle.Bold), TextAlign = ContentAlignment.MiddleRight };
+            _versionLine = new Label { Text = "VERSÃO INSTALADA", Dock = DockStyle.Fill, ForeColor = FieldTheme.MutedText, Font = new Font("Consolas", 8F), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
+            _progress = new UpdateProgressBar { Dock = DockStyle.Fill, Margin = new Padding(0, 8, 0, 0), Active = true };
+            statusLayout.Controls.Add(_statusTitle, 0, 0);
+            statusLayout.Controls.Add(_progressLabel, 1, 0);
+            statusLayout.Controls.Add(_statusDescription, 0, 1);
+            statusLayout.SetColumnSpan(_statusDescription, 2);
+            statusLayout.Controls.Add(_versionLine, 0, 2);
+            statusLayout.SetColumnSpan(_versionLine, 2);
+            statusLayout.Controls.Add(_progress, 0, 3);
+            statusLayout.SetColumnSpan(_progress, 2);
+            status.Controls.Add(statusLayout);
+            layout.Controls.Add(status, 0, 2);
+
+            var details = new UpdateSurfacePanel { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 12), Padding = new Padding(24, 16, 24, 14), AccentColor = FieldTheme.Blue };
+            var detailLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, BackColor = FieldTheme.Surface, Margin = new Padding(0) };
+            detailLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 66));
+            detailLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34));
+            detailLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            detailLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            detailLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+            var detailTitle = new Label { Text = "DETALHES DA ATUALIZAÇÃO", Dock = DockStyle.Fill, ForeColor = FieldTheme.Blue, Font = new Font("Segoe UI Semibold", 7.5F), TextAlign = ContentAlignment.MiddleLeft };
+            detailLayout.Controls.Add(detailTitle, 0, 0);
+            detailLayout.SetColumnSpan(detailTitle, 2);
+            _notes = new Label { Text = "As notas da versão aparecerão aqui.", Dock = DockStyle.Fill, ForeColor = Color.FromArgb(190, 207, 226), Font = new Font("Segoe UI", 8.7F), TextAlign = ContentAlignment.TopLeft, AutoEllipsis = true, Padding = new Padding(0, 4, 18, 0) };
+            var protections = new Label { Text = "PROTEÇÕES ATIVAS\n\n✓ Origem HTTPS obrigatória\n✓ Tamanho do arquivo conferido\n✓ SHA-256 antes e depois\n↺ Backup para recuperação", Dock = DockStyle.Fill, BackColor = FieldTheme.SurfaceRaised, ForeColor = FieldTheme.Cyan, Font = new Font("Consolas", 8.2F), TextAlign = ContentAlignment.TopLeft, Padding = new Padding(16, 13, 12, 8), Margin = new Padding(8, 0, 0, 8) };
+            _securityLine = new Label { Text = "✓ O pacote é validado antes de substituir o executável. A versão anterior fica disponível para recuperação.", Dock = DockStyle.Fill, ForeColor = FieldTheme.Green, Font = new Font("Segoe UI Semibold", 8F), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
+            detailLayout.Controls.Add(_notes, 0, 1);
+            detailLayout.Controls.Add(protections, 1, 1);
+            detailLayout.Controls.Add(_securityLine, 0, 2);
+            detailLayout.SetColumnSpan(_securityLine, 2);
+            details.Controls.Add(detailLayout);
+            layout.Controls.Add(details, 0, 3);
+
+            var actions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, BackColor = FieldTheme.Canvas, Margin = new Padding(0), Padding = new Padding(0, 10, 0, 4) };
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
+            _secondaryButton = new UpdateActionButton { Text = "VOLTAR AO PAINEL", Dock = DockStyle.Fill, Margin = new Padding(0, 0, 12, 0), StartColor = FieldTheme.SurfaceRaised, EndColor = Color.FromArgb(14, 27, 46), HoverStartColor = Color.FromArgb(27, 48, 72), HoverEndColor = Color.FromArgb(20, 38, 61), BorderColor = FieldTheme.Stroke, ForeColor = FieldTheme.SoftText };
+            _primaryButton = new UpdateActionButton { Text = "ATUALIZAR AGORA", Dock = DockStyle.Fill, Margin = new Padding(0) };
+            _secondaryButton.Click += delegate { if (_secondaryAction != null && _secondaryButton.Enabled) { _secondaryAction(); } };
+            _primaryButton.Click += delegate { if (_primaryAction != null && _primaryButton.Enabled) { _primaryAction(); } };
+            actions.Controls.Add(_secondaryButton, 1, 0);
+            actions.Controls.Add(_primaryButton, 2, 0);
+            layout.Controls.Add(actions, 0, 4);
+
+            _animation = new Timer { Interval = 55, Enabled = true };
+            _animation.Tick += delegate
+            {
+                if (!_progress.Active || _progress.Determinate || !SystemInformation.IsMenuAnimationEnabled) { return; }
+                _phase += 13;
+                _progress.Phase = _phase;
+                _progress.Invalidate();
+            };
+            ShowChecking(new Version(0, 0, 0));
+        }
+
+        public void ShowChecking(Version current)
+        {
+            Busy = true;
+            SetRail(0, -1, -1);
+            SetProgress(false, 0, FieldTheme.Cyan, "CONECTANDO");
+            _statusTitle.Text = "Buscando uma nova versão";
+            _statusDescription.Text = "Consultando o canal oficial de atualizações. Nenhum arquivo será alterado nesta etapa.";
+            _versionLine.Text = "VERSÃO INSTALADA  " + current.ToString(3);
+            _notes.Text = "Conexão HTTPS em andamento. A disponibilidade da versão e os arquivos obrigatórios serão verificados antes do download.";
+            _securityLine.ForeColor = FieldTheme.Green;
+            _securityLine.Text = "✓ Consulta somente leitura • sem credenciais armazenadas no aplicativo";
+            HideActions();
+        }
+
+        public void ShowAvailable(Version current, Version latest, string notes, Action install, Action close)
+        {
+            Busy = false;
+            SetRail(1, 0, -1);
+            SetProgress(true, 0, FieldTheme.Cyan, "PRONTA PARA BAIXAR");
+            _statusTitle.Text = "Versão " + latest.ToString(3) + " disponível";
+            _statusDescription.Text = "Revise os detalhes e inicie a atualização quando estiver pronto.";
+            _versionLine.Text = "VERSÃO INSTALADA  " + current.ToString(3) + "     →     NOVA VERSÃO  " + latest.ToString(3);
+            _notes.Text = String.IsNullOrWhiteSpace(notes) ? "Esta versão contém melhorias de estabilidade e experiência operacional." : notes;
+            _securityLine.ForeColor = FieldTheme.Green;
+            _securityLine.Text = "✓ Download HTTPS • validação SHA-256 • backup automático antes da instalação";
+            SetActions("AGORA NÃO", close, "ATUALIZAR PARA " + latest.ToString(3), install);
+        }
+
+        public void ShowProgress(UpdateProgressInfo info, Version current, Version latest)
+        {
+            Busy = true;
+            int stage = Math.Max(0, Math.Min(4, (int)info.Stage));
+            SetRail(stage, stage - 1, -1);
+            bool determinate = info.Percent >= 0;
+            string progressText = determinate ? Math.Max(0, Math.Min(100, info.Percent)) + "%" : "EM ANDAMENTO";
+            SetProgress(determinate, info.Percent, stage >= 3 ? FieldTheme.Purple : FieldTheme.Cyan, progressText);
+            _statusTitle.Text = info.Title;
+            _statusDescription.Text = info.Description;
+            _versionLine.Text = "VERSÃO INSTALADA  " + current.ToString(3) + "     →     DESTINO  " + latest.ToString(3);
+            _notes.Text = StageDetail((UpdateStage)stage);
+            _securityLine.ForeColor = FieldTheme.Green;
+            _securityLine.Text = "✓ Não feche o computador. O aplicativo será reiniciado automaticamente quando estiver seguro.";
+            HideActions();
+        }
+
+        public void ShowUpToDate(Version current, Action close)
+        {
+            Busy = false;
+            SetRail(4, 4, -1);
+            SetProgress(true, 100, FieldTheme.Green, "CONCLUÍDO");
+            _statusTitle.Text = "Sistema atualizado";
+            _statusDescription.Text = "Você já está usando a versão mais recente disponível.";
+            _versionLine.Text = "VERSÃO INSTALADA  " + current.ToString(3);
+            _notes.Text = "Nenhum download é necessário. Você pode voltar ao painel e continuar a análise da rede.";
+            _securityLine.ForeColor = FieldTheme.Green;
+            _securityLine.Text = "✓ Consulta concluída com sucesso";
+            SetActions(null, null, "VOLTAR AO PAINEL", close);
+        }
+
+        public void ShowFailure(UpdateStage stage, string message, Action retry, Action close)
+        {
+            Busy = false;
+            int index = Math.Max(0, Math.Min(4, (int)stage));
+            SetRail(index, index - 1, index);
+            SetProgress(true, 0, FieldTheme.Red, "AÇÃO NECESSÁRIA");
+            _statusTitle.Text = "Atualização não concluída";
+            _statusDescription.Text = message;
+            _notes.Text = "A instalação atual permanece preservada. Verifique a conexão e tente novamente. Se o problema continuar, consulte o arquivo updater.log.";
+            _securityLine.ForeColor = FieldTheme.Amber;
+            _securityLine.Text = "! Nenhuma versão não validada será instalada";
+            SetActions("VOLTAR AO PAINEL", close, "TENTAR NOVAMENTE", retry);
+        }
+
+        public void ShowRestarting(Version latest)
+        {
+            Busy = true;
+            SetRail(4, 3, -1);
+            SetProgress(false, 0, FieldTheme.Green, "REINICIANDO");
+            _statusTitle.Text = "Atualização instalada";
+            _statusDescription.Text = "A versão " + latest.ToString(3) + " foi validada. O painel será aberto novamente em instantes.";
+            _versionLine.Text = "NOVA VERSÃO  " + latest.ToString(3);
+            _notes.Text = "A substituição terminou com sucesso e o backup da versão anterior foi preservado para recuperação.";
+            _securityLine.ForeColor = FieldTheme.Green;
+            _securityLine.Text = "✓ Integridade final confirmada";
+            HideActions();
+        }
+
+        public void ShowPreview()
+        {
+            ShowProgress(new UpdateProgressInfo { Stage = UpdateStage.Integrity, Title = "Validando integridade do pacote", Description = "Comparando o arquivo baixado com o SHA-256 publicado.", Percent = -1 }, new Version(3, 3, 0), new Version(3, 3, 1));
+            _notes.Text = "Download concluído. O sistema está verificando o hash, a versão interna e os caminhos do pacote antes de permitir a instalação.";
+        }
+
+        public void ShowCloseBlocked()
+        {
+            if (!Busy) { return; }
+            _statusDescription.Text = "A etapa atual precisa terminar para manter a instalação consistente. Aguarde alguns instantes.";
+            _securityLine.ForeColor = FieldTheme.Amber;
+            _securityLine.Text = "! Fechamento temporariamente bloqueado durante uma etapa crítica";
+        }
+
+        public void FocusPrimary()
+        {
+            if (_primaryButton.Visible && _primaryButton.Enabled) { _primaryButton.Select(); }
+            else if (_secondaryButton.Visible && _secondaryButton.Enabled) { _secondaryButton.Select(); }
+            else { Select(); }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && _animation != null) { _animation.Stop(); _animation.Dispose(); }
+            base.Dispose(disposing);
+        }
+
+        private void SetActions(string secondaryText, Action secondary, string primaryText, Action primary)
+        {
+            _secondaryAction = secondary;
+            _primaryAction = primary;
+            _secondaryButton.Visible = !String.IsNullOrWhiteSpace(secondaryText);
+            _secondaryButton.Enabled = _secondaryButton.Visible;
+            _secondaryButton.Text = secondaryText ?? String.Empty;
+            _primaryButton.Visible = !String.IsNullOrWhiteSpace(primaryText);
+            _primaryButton.Enabled = _primaryButton.Visible;
+            _primaryButton.Text = primaryText ?? String.Empty;
+            FocusPrimary();
+        }
+
+        private void HideActions() { SetActions(null, null, null, null); }
+
+        private void SetRail(int active, int completed, int error)
+        {
+            _stageRail.ActiveStage = active;
+            _stageRail.CompletedThrough = completed;
+            _stageRail.ErrorStage = error;
+            _stageRail.AccessibleDescription = "Etapa " + (active + 1) + " de 5: " + active;
+            _stageRail.Invalidate();
+        }
+
+        private void SetProgress(bool determinate, int value, Color accent, string label)
+        {
+            _progress.Determinate = determinate;
+            _progress.ProgressValue = Math.Max(0, Math.Min(100, value));
+            _progress.AccentColor = accent;
+            _progress.Active = true;
+            _progressLabel.Text = label;
+            _progressLabel.ForeColor = accent;
+            _progress.Invalidate();
+        }
+
+        private static string StageDetail(UpdateStage stage)
+        {
+            if (stage == UpdateStage.Download) { return "O pacote oficial está sendo transferido. O percentual representa apenas os bytes do download."; }
+            if (stage == UpdateStage.Integrity) { return "O hash SHA-256, a versão interna e os caminhos do pacote estão sendo conferidos antes da instalação."; }
+            if (stage == UpdateStage.Install) { return "O instalador aguarda o painel encerrar, cria um backup e substitui somente o executável validado."; }
+            if (stage == UpdateStage.Restart) { return "A instalação terminou e a versão atualizada será aberta automaticamente."; }
+            return "A consulta verifica a release pública mais recente sem alterar arquivos locais.";
+        }
+    }
+}
+
+

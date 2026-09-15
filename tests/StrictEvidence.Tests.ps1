@@ -149,15 +149,52 @@ Describe 'Strict Evidence configuration and build gate' {
     }
 }
 
+Describe 'Assisted update experience' {
+    BeforeAll {
+        $script:projectRoot = Split-Path $PSScriptRoot -Parent
+        $script:updaterPath = Join-Path $script:projectRoot 'launcher\IPConflictMonitor.Updater.cs'
+        $script:updateExperiencePath = Join-Path $script:projectRoot 'launcher\IPConflictMonitor.UpdateExperience.cs'
+    }
+
+    It 'keeps the update flow inside an app-owned page' {
+        $updater = Get-Content -LiteralPath $script:updaterPath -Raw
+        $experience = Get-Content -LiteralPath $script:updateExperiencePath -Raw
+        Assert-StrictMatch $updater 'GetControlFromPosition\(1, 0\)' 'update page replaces the main dashboard cell'
+        Assert-StrictMatch $updater 'PreviousContent = previous' 'dashboard content reference is preserved'
+        Assert-StrictMatch $updater 'previous\.Visible = false' 'dashboard content is preserved behind the update page'
+        Assert-StrictMatch $experience 'UpdateExperiencePage' 'shared update page exists'
+        Assert-StrictMatch $experience 'CONSULTA.*DOWNLOAD.*INTEGRIDADE.*INSTALAÇÃO.*REINÍCIO' 'five real update stages are visible'
+        Assert-StrictNoMatch $updater 'MessageBox\.Show' 'updater uses no native message boxes'
+    }
+
+    It 'reports truthful download progress and verifies the complete file' {
+        $updater = Get-Content -LiteralPath $script:updaterPath -Raw
+        Assert-StrictMatch $updater 'received \* 100L / total' 'download percentage is byte based'
+        Assert-StrictMatch $updater 'expectedSize > 0 && received != expectedSize' 'published size is enforced'
+        Assert-StrictMatch $updater '\.part' 'download uses a partial file'
+        Assert-StrictMatch $updater 'output\.Flush\(true\)' 'download is flushed before promotion'
+        Assert-StrictMatch $updater 'File\.Move\(partial, destination\)' 'validated transfer is promoted after completion'
+    }
+
+    It 'shows installation recovery retry and restart states' {
+        $updater = Get-Content -LiteralPath $script:updaterPath -Raw
+        $experience = Get-Content -LiteralPath $script:updateExperiencePath -Raw
+        Assert-StrictMatch $updater 'target \+ "\.previous"' 'previous executable is backed up'
+        Assert-StrictMatch $updater 'File\.Copy\(backup, target, true\)' 'failed replacement restores the backup'
+        Assert-StrictMatch $experience 'ShowFailure' 'failure remains in the update page'
+        Assert-StrictMatch $experience 'TENTAR NOVAMENTE' 'retry action is visible'
+        Assert-StrictMatch $experience 'ShowRestarting' 'successful install has a restart state'
+    }
+}
 Describe 'Compiled Strict Evidence executable' {
     BeforeAll {
         $script:projectRoot = Split-Path $PSScriptRoot -Parent
         $script:exe = Join-Path $script:projectRoot 'dist\IPConflictMonitor.exe'
     }
 
-    It 'reports version 3.3.0.0' {
+    It 'reports version 3.3.1.0' {
         Assert-StrictTrue (Test-Path -LiteralPath $script:exe) 'compiled executable exists'
-        Assert-StrictEqual (Get-Item -LiteralPath $script:exe).VersionInfo.FileVersion '3.3.0.0' 'compiled executable version is correct'
+        Assert-StrictEqual (Get-Item -LiteralPath $script:exe).VersionInfo.FileVersion '3.3.1.0' 'compiled executable version is correct'
     }
 
     It 'passes all synthetic detection scenarios' {
@@ -168,11 +205,29 @@ Describe 'Compiled Strict Evidence executable' {
     }
 
     It 'contains the strict states and evidence markers' {
+        function Test-BinarySequence {
+            param([byte[]]$Haystack, [byte[]]$Needle)
+            if (-not $Needle -or $Needle.Length -eq 0 -or $Needle.Length -gt $Haystack.Length) { return $false }
+            for ($offset = 0; $offset -le $Haystack.Length - $Needle.Length; $offset++) {
+                $match = $true
+                for ($index = 0; $index -lt $Needle.Length; $index++) {
+                    if ($Haystack[$offset + $index] -ne $Needle[$index]) { $match = $false; break }
+                }
+                if ($match) { return $true }
+            }
+            return $false
+        }
         $bytes = [IO.File]::ReadAllBytes($script:exe)
-        $ascii = [Text.Encoding]::ASCII.GetString($bytes)
-        $unicode = [Text.Encoding]::Unicode.GetString($bytes)
-        foreach ($marker in @('MONITORING_LIMITED','UNVERIFIED','STRICT_PROOF','-SelfTestDetection','EvidenceHash','PairCandidates','ClearDynamicNeighbors')) {
-            Assert-StrictTrue ($ascii.Contains($marker) -or $unicode.Contains($marker)) "binary marker $marker is present"
+        foreach ($marker in @('MONITORING_LIMITED','UNVERIFIED','STRICT_PROOF','-SelfTestDetection','-UpdateScreenshot','UpdateExperiencePage','EvidenceHash','PairCandidates','ClearDynamicNeighbors')) {
+            $asciiMarker = [Text.Encoding]::ASCII.GetBytes($marker)
+            $unicodeMarker = [Text.Encoding]::Unicode.GetBytes($marker)
+            Assert-StrictTrue ((Test-BinarySequence $bytes $asciiMarker) -or (Test-BinarySequence $bytes $unicodeMarker)) "binary marker $marker is present"
         }
     }
 }
+
+
+
+
+
+

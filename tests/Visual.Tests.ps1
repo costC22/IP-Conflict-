@@ -31,7 +31,7 @@ Describe 'Strict Evidence field interface' {
         }
     }
 
-    It 'renders a full-size version 3.3 dashboard preview' {
+    It 'renders a full-size version 3.3.1 dashboard preview' {
         Add-Type -AssemblyName System.Drawing
         $preview = Join-Path $script:projectRoot 'dist\IPConflictMonitor-dashboard.png'
         Assert-VisualTrue (Test-Path -LiteralPath $preview) 'dashboard preview exists'
@@ -43,6 +43,25 @@ Describe 'Strict Evidence field interface' {
         finally {
             $image.Dispose()
         }
-        Assert-VisualMatch (Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw) 'FIELD EDITION 3.3' 'field edition label is present'
+        Assert-VisualMatch (Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw) 'FIELD EDITION 3.3.1' 'field edition label is present'
+    }
+    It 'renders the in-app update page at full dashboard size' {
+        Add-Type -AssemblyName System.Drawing
+        $preview = Join-Path $script:projectRoot 'dist\IPConflictMonitor-update.png'
+        Assert-VisualTrue (Test-Path -LiteralPath $preview) 'update preview exists'
+        $image = [Drawing.Image]::FromFile($preview)
+        try {
+            Assert-VisualTrue ($image.Width -gt 1000) 'update page width is greater than 1000px'
+            Assert-VisualTrue ($image.Height -gt 600) 'update page height is greater than 600px'
+        }
+        finally {
+            $image.Dispose()
+        }
+        $source = Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.UpdateExperience.cs') -Raw
+        foreach ($marker in @('ATUALIZAÇÃO ASSISTIDA','CONSULTA','DOWNLOAD','INTEGRIDADE','INSTALAÇÃO','REINÍCIO','PROTEÇÕES ATIVAS')) {
+            Assert-VisualMatch $source $marker "update page marker $marker is present"
+        }
     }
 }
+
+
