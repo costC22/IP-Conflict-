@@ -1,6 +1,6 @@
-# IPConflictMonitor 3.2 — Strict Evidence Detection
+# IPConflictMonitor 3.3 — Strict Evidence Detection
 
-Ferramenta portátil para Windows destinada a verificar conflitos IPv4 no mesmo domínio de camada 2. A versão 3.2 adota uma política conservadora: informação ambígua nunca é apresentada como conflito.
+Ferramenta portátil para Windows destinada a verificar conflitos IPv4 no mesmo domínio de camada 2. A versão 3.3 adota uma política conservadora: informação ambígua nunca é apresentada como conflito.
 
 > Um conflito somente é confirmado quando requisições ARP geradas pelo monitor recebem respostas contemporâneas, correlacionadas, repetidas e consistentes de dois endereços MAC distintos para o mesmo IPv4.
 
@@ -33,6 +33,8 @@ Para cada candidato, o monitor:
 8. exige repetição da prova em 2 ciclos consecutivos;
 9. bloqueia a confirmação em caso de Proxy ARP, MAC de gateway ou associação autorizada;
 10. gera `EvidenceId` e SHA-256 da evidência normalizada.
+
+Na versão 3.3, o discovery força nova resolução apenas das entradas ARP dinâmicas já conhecidas enquanto a captura está ativa. Isso faz conflitos silenciosos aparecerem como candidatos sem apagar entradas estáticas. A verificação também exige que a requisição tenha o MAC da interface selecionada, que cada resposta seja destinada a esse mesmo MAC e que endereços excluídos não participem da prova. Se três ou mais equipamentos responderem, o engine procura um par estável repetido nas rodadas e preserva todos os respondentes persistentes no relatório.
 
 Existe uma única função de decisão (`EvaluateConflict`). A interface gráfica apenas exibe a decisão produzida pelo engine.
 

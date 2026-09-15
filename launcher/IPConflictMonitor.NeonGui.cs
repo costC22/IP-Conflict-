@@ -302,7 +302,7 @@ namespace IPConflictMonitor.Launcher
             public NetworkOperationsForm(bool demoMode)
             {
                 _demoMode = demoMode;
-                Text = "IPConflictMonitor 3.2 — Strict Evidence";
+                Text = "IPConflictMonitor 3.3 — Strict Evidence";
                 Icon = SystemIcons.Shield;
                 BackColor = Canvas;
                 ForeColor = MainText;
@@ -336,7 +336,7 @@ namespace IPConflictMonitor.Launcher
                 _grid = BuildGrid();
                 content.Controls.Add(_grid, 0, 4);
                 content.Controls.Add(BuildLowerDeck(out _details, out _feed), 0, 5);
-                _footer = new Label { Dock = DockStyle.Fill, Text = "FIELD EDITION 3.2  •  MOTOR C# NATIVO  •  SEM POWERSHELL  •  SEM INSTALAÇÃO", ForeColor = Color.FromArgb(87, 114, 143), Font = new Font("Segoe UI Semibold", 7.3F), TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(2, 0, 0, 0) };
+                _footer = new Label { Dock = DockStyle.Fill, Text = "FIELD EDITION 3.3  •  MOTOR C# NATIVO  •  SEM POWERSHELL  •  SEM INSTALAÇÃO", ForeColor = Color.FromArgb(87, 114, 143), Font = new Font("Segoe UI Semibold", 7.3F), TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(2, 0, 0, 0) };
                 content.Controls.Add(_footer, 0, 6);
 
                 _search.HandleCreated += delegate { SendMessage(_search.Handle, 0x1501, new IntPtr(1), "Buscar por IP, nome do dispositivo, MAC ou diagnóstico..."); };
@@ -447,7 +447,7 @@ namespace IPConflictMonitor.Launcher
                 titleBox.RowStyles.Add(new RowStyle(SizeType.Absolute, 21));
                 titleBox.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
                 titleBox.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
-                titleBox.Controls.Add(new Label { Text = "NETWORK INTELLIGENCE  /  FIELD EDITION 3.2", Dock = DockStyle.Fill, ForeColor = Cyan, Font = new Font("Segoe UI Semibold", 7.2F), TextAlign = ContentAlignment.BottomLeft, BackColor = Color.Transparent }, 0, 0);
+                titleBox.Controls.Add(new Label { Text = "NETWORK INTELLIGENCE  /  FIELD EDITION 3.3", Dock = DockStyle.Fill, ForeColor = Cyan, Font = new Font("Segoe UI Semibold", 7.2F), TextAlign = ContentAlignment.BottomLeft, BackColor = Color.Transparent }, 0, 0);
                 titleBox.Controls.Add(new Label { Text = "Radar de conflitos IPv4", Dock = DockStyle.Fill, ForeColor = MainText, Font = new Font("Segoe UI Semibold", 20F), TextAlign = ContentAlignment.BottomLeft, BackColor = Color.Transparent }, 0, 1);
                 titleBox.Controls.Add(new Label { Text = "Descubra quando dois dispositivos disputam o mesmo endereço na rede local", Dock = DockStyle.Fill, ForeColor = SoftText, Font = new Font("Segoe UI", 8.7F), TextAlign = ContentAlignment.TopLeft, BackColor = Color.Transparent }, 0, 2);
                 layout.Controls.Add(titleBox, 0, 0);
@@ -646,7 +646,7 @@ namespace IPConflictMonitor.Launcher
                 _engineHint.Text = "1 conflito confirmado  •  1 não verificado  •  1 limitado";
                 _networkLabel.Text = "Ethernet  /  192.168.15.3  /  Strict Evidence";
                 _updatedLabel.Text = "Atualizado às 10:04:31";
-                _footer.Text = "MODO DE DEMONSTRAÇÃO  •  DADOS FICTÍCIOS  •  STRICT EVIDENCE 3.2";
+                _footer.Text = "MODO DE DEMONSTRAÇÃO  •  DADOS FICTÍCIOS  •  STRICT EVIDENCE 3.3";
                 _feed.SetItems(new[]
                 {
                     new FeedItem { Time = "10:04:23", Text = "Strict Verification READY", Color = Cyan },
@@ -841,7 +841,7 @@ namespace IPConflictMonitor.Launcher
 
             private void ShowHelp()
             {
-                MessageBox.Show(this, "1. ANALISAR REDE executa discovery e Strict Verification.\n\n2. CONFLITO só aparece após requisições ARP correlacionadas, o mesmo par em pelo menos 2 de 3 rodadas e 2 ciclos consecutivos.\n\n3. NÃO VERIFICADO nunca é incidente. MONITORAMENTO LIMITADO indica ausência de captura confiável.\n\nStrict ARP verification requer visibilidade Layer 2, TShark e Npcap.", "Ajuda — Strict Evidence", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, "1. ANALISAR REDE executa discovery e Strict Verification.\n\n2. CONFLITO só aparece após requisições ARP correlacionadas, um par estável em pelo menos 2 de 3 rodadas e 2 ciclos consecutivos.\n\n3. NÃO VERIFICADO nunca é incidente. MONITORAMENTO LIMITADO indica ausência de captura confiável.\n\nStrict ARP verification requer visibilidade Layer 2, TShark e Npcap.", "Ajuda — Strict Evidence", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
 
             private static List<string> ParseCsv(string line)
@@ -889,7 +889,4 @@ namespace IPConflictMonitor.Launcher
         }
     }
 }
-
-
-
 
