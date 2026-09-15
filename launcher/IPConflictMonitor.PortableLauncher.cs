@@ -9,8 +9,8 @@ using System.Text;
 [assembly: AssemblyCompany("IPConflictMonitor")]
 [assembly: AssemblyProduct("IPConflictMonitor Field Edition")]
 [assembly: AssemblyCopyright("Copyright (c) 2026")]
-[assembly: AssemblyVersion("3.2.2.0")]
-[assembly: AssemblyFileVersion("3.2.2.0")]
+[assembly: AssemblyVersion("3.3.0.0")]
+[assembly: AssemblyFileVersion("3.3.0.0")]
 
 namespace IPConflictMonitor.Launcher
 {
@@ -55,7 +55,7 @@ namespace IPConflictMonitor.Launcher
         private static int ShowStatus()
         {
             string data = GetUserDataDirectory(); string snapshot = Path.Combine(data, "reports", "snapshot.csv");
-            Console.WriteLine("IPConflictMonitor 3.2.2 - Strict Evidence Detection");
+            Console.WriteLine("IPConflictMonitor 3.3.0 - Strict Evidence Detection");
             Console.WriteLine("Motor: C# nativo; confirmacao somente por ARP ativo correlacionado e repetido");
             Console.WriteLine("Politica: fail-closed sem TShark/Npcap/captura saudavel");
             Console.WriteLine("Atualizador: GitHub Releases com validacao SHA-256");
@@ -99,7 +99,7 @@ namespace IPConflictMonitor.Launcher
 
         private static void PrintHelp()
         {
-            Console.WriteLine("IPConflictMonitor 3.2.2 - Strict Evidence Detection");
+            Console.WriteLine("IPConflictMonitor 3.3.0 - Strict Evidence Detection");
             Console.WriteLine("  IPConflictMonitor.exe                         Abre o painel grafico.");
             Console.WriteLine("  IPConflictMonitor.exe -Worker -Once           Executa uma varredura portatil.");
             Console.WriteLine("  IPConflictMonitor.exe -Worker                 Monitora enquanto o processo estiver aberto.");

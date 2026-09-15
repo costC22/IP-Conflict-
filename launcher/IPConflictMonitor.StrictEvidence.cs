@@ -65,13 +65,31 @@ namespace IPConflictMonitor.Launcher
         public List<string> CorrelatedMacs = new List<string>();
         public Dictionary<string, int> ResponsesByMac = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-        public string PairKey
+        public string[] ValidMacs
         {
             get
             {
-                string[] valid = CorrelatedMacs.Select(StrictEvidenceDecisionEngine.NormalizeAndValidateMac).Where(delegate(string value) { return value != null; }).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(delegate(string value) { return value; }).ToArray();
-                return valid.Length == 2 ? valid[0] + "+" + valid[1] : null;
+                return CorrelatedMacs.Select(StrictEvidenceDecisionEngine.NormalizeAndValidateMac).Where(delegate(string value) { return value != null; }).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(delegate(string value) { return value; }).ToArray();
             }
+        }
+
+        public string[] PairCandidates
+        {
+            get
+            {
+                string[] valid = ValidMacs;
+                var pairs = new List<string>();
+                for (int left = 0; left < valid.Length; left++)
+                {
+                    for (int right = left + 1; right < valid.Length; right++) { pairs.Add(valid[left] + "+" + valid[right]); }
+                }
+                return pairs.ToArray();
+            }
+        }
+
+        public string PairKey
+        {
+            get { return PairCandidates.FirstOrDefault(); }
         }
     }
 
@@ -211,10 +229,11 @@ namespace IPConflictMonitor.Launcher
             decision.RequestCorrelationValid = correlated.Count > 0;
             decision.CorrelatedArpReplies = correlated.Sum(delegate(VerificationRoundEvidence round) { return round.ResponsesByMac.Values.Sum(); });
 
-            string[] positivePairs = correlated.Select(delegate(VerificationRoundEvidence round) { return round.PairKey; }).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            decision.SameMacPairAcrossRounds = positivePairs.Length == 1;
-            string pair = positivePairs.Length == 1 ? positivePairs[0] : null;
-            decision.PositiveRounds = pair == null ? 0 : correlated.Count(delegate(VerificationRoundEvidence round) { return String.Equals(round.PairKey, pair, StringComparison.OrdinalIgnoreCase); });
+            Dictionary<string, int> pairCounts = correlated.SelectMany(delegate(VerificationRoundEvidence round) { return round.PairCandidates.Distinct(StringComparer.OrdinalIgnoreCase); }).GroupBy(delegate(string value) { return value; }, StringComparer.OrdinalIgnoreCase).ToDictionary(delegate(IGrouping<string, string> group) { return group.Key; }, delegate(IGrouping<string, string> group) { return group.Count(); }, StringComparer.OrdinalIgnoreCase);
+            KeyValuePair<string, int> strongestPair = pairCounts.OrderByDescending(delegate(KeyValuePair<string, int> item) { return item.Value; }).ThenBy(delegate(KeyValuePair<string, int> item) { return item.Key; }, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            string pair = strongestPair.Value >= Math.Max(1, policy.RequiredPositiveRounds) ? strongestPair.Key : null;
+            decision.SameMacPairAcrossRounds = pair != null;
+            decision.PositiveRounds = pair == null ? 0 : strongestPair.Value;
 
             if (pair == null || decision.PositiveRounds < Math.Max(1, policy.RequiredPositiveRounds))
             {
@@ -226,7 +245,7 @@ namespace IPConflictMonitor.Launcher
                 if (evidence.OnlyHistoricalChange) { decision.Reason = "Conflito rejeitado: apenas alteracao historica de MAC."; }
                 else if (evidence.CacheOnlyAmbiguity) { decision.Reason = "Conflito rejeitado: multiplos MACs existem somente no cache/historico."; }
                 else if (healthyRounds.Count > 0 && !decision.RequestObserved) { decision.Reason = "Conflito rejeitado: respostas ARP sem requisicao correlacionada."; }
-                else if (!decision.SameMacPairAcrossRounds && positivePairs.Length > 1) { decision.Reason = "Conflito rejeitado: o par de MACs nao foi consistente entre rodadas."; }
+                else if (!decision.SameMacPairAcrossRounds && pairCounts.Count > 1) { decision.Reason = "Conflito rejeitado: nenhum par de MACs se repetiu nas rodadas exigidas."; }
                 else if (evidence.ObservedGratuitousArp) { decision.Reason = "Conflito rejeitado: somente ARP espontaneo/gratuitous foi observado."; }
                 else { decision.Reason = resolved ? "CONFLICT_RESOLVED: a prova contemporanea deixou de existir." : "Conflito nao confirmado: o mesmo par nao respondeu em rodadas suficientes."; }
                 decision.EvidenceQuality = resolved ? "RECOVERED" : "INCONCLUSIVE";
@@ -261,7 +280,7 @@ namespace IPConflictMonitor.Launcher
             if (memory.ConsecutivePositiveCycles >= Math.Max(1, policy.RequiredConfirmedCycles))
             {
                 decision.State = StrictDetectionState.CONFIRMED;
-                decision.Reason = "Conflito confirmado apos respostas ARP correlacionadas e repetidas de dois MACs distintos para o mesmo IPv4.";
+                decision.Reason = "Conflito confirmado apos respostas ARP correlacionadas e repetidas de dois ou mais MACs distintos para o mesmo IPv4.";
                 decision.EvidenceQuality = "STRICT_PROOF";
                 memory.WasConfirmed = true;
                 if (!memory.FirstConfirmedUtc.HasValue) { memory.FirstConfirmedUtc = DateTime.UtcNow; }
@@ -379,7 +398,7 @@ namespace IPConflictMonitor.Launcher
             RunCase(output, failures, ref passed, "multicast MAC rejected", delegate { return StrictEvidenceDecisionEngine.NormalizeAndValidateMac("01:00:5E:00:00:01") == null; });
             RunCase(output, failures, ref passed, "wrong interface", TestWrongInterface);
             RunCase(output, failures, ref passed, "physical interface preferred", TestInterfaceSelection);
-            RunCase(output, failures, ref passed, "real repeated conflict", TestTwoCycles);
+            RunCase(output, failures, ref passed, "three responders with stable pair", TestThreeResponders);
             RunCase(output, failures, ref passed, "confirmed conflict recovery", TestRecovery);
             output.WriteLine();
             output.WriteLine(passed + " passed");
@@ -456,8 +475,9 @@ namespace IPConflictMonitor.Launcher
         }
         private static bool TestInconsistentRound()
         {
-            ConflictEvidence evidence = Evidence(1); evidence.Rounds.Add(Round(1, MacA, MacB)); evidence.Rounds.Add(Round(2, MacA, null));
-            return StrictEvidenceDecisionEngine.EvaluateConflict(evidence, Policy(), new ConflictDecisionMemory()).State == StrictDetectionState.UNVERIFIED;
+            ConflictEvidence evidence = Evidence(1); evidence.Rounds.Add(Round(1, MacA, MacB)); evidence.Rounds.Add(Round(2, MacA, MacC));
+            DetectionDecision decision = StrictEvidenceDecisionEngine.EvaluateConflict(evidence, Policy(), new ConflictDecisionMemory());
+            return decision.State == StrictDetectionState.UNVERIFIED && !decision.SameMacPairAcrossRounds;
         }
         private static bool TestMissingSecondCycle()
         {
@@ -507,6 +527,25 @@ namespace IPConflictMonitor.Launcher
             int physical = StrictEvidenceDecisionEngine.InterfaceCandidateScore("Ethernet", "Intel Ethernet", true, false, true, 1000000000L, false);
             int vpn = StrictEvidenceDecisionEngine.InterfaceCandidateScore("VPN", "TAP virtual adapter", false, false, true, 1000000000L, true);
             return physical > vpn;
+        }
+        private static bool TestThreeResponders()
+        {
+            var memory = new ConflictDecisionMemory();
+            ConflictEvidence firstEvidence = Evidence(1);
+            firstEvidence.Rounds.Add(RoundWithMacs(1, MacA, MacB, MacC));
+            firstEvidence.Rounds.Add(RoundWithMacs(2, MacA, MacB, MacC));
+            ConflictEvidence secondEvidence = Evidence(2);
+            secondEvidence.Rounds.Add(RoundWithMacs(1, MacA, MacB, MacC));
+            secondEvidence.Rounds.Add(RoundWithMacs(2, MacA, MacB, MacC));
+            DetectionDecision first = StrictEvidenceDecisionEngine.EvaluateConflict(firstEvidence, Policy(), memory);
+            DetectionDecision second = StrictEvidenceDecisionEngine.EvaluateConflict(secondEvidence, Policy(), memory);
+            return first.State == StrictDetectionState.UNVERIFIED && second.State == StrictDetectionState.CONFIRMED && second.SameMacPairAcrossRounds;
+        }
+        private static VerificationRoundEvidence RoundWithMacs(int number, params string[] macs)
+        {
+            var round = new VerificationRoundEvidence { Round = number, CaptureHealthy = true, RequestObserved = true, RequestCorrelationValid = true, InterfaceValid = true, RequestTimestampUtc = DateTime.UtcNow, ResponseWindowStartUtc = DateTime.UtcNow, ResponseWindowEndUtc = DateTime.UtcNow.AddSeconds(1) };
+            foreach (string mac in macs) { round.CorrelatedMacs.Add(mac); round.ResponsesByMac[mac] = 1; }
+            return round;
         }
         private static bool TestRecovery()
         {

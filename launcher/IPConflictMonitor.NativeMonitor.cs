@@ -273,10 +273,10 @@ namespace IPConflictMonitor.Launcher
                     var trustedMacs = new HashSet<string>((config.Network.TrustedMacs ?? new string[0]).Select(StrictEvidenceDecisionEngine.NormalizeAndValidateMac).Where(delegate(string value) { return value != null; }), StringComparer.OrdinalIgnoreCase);
                     string tshark = (!noCapture && config.Monitoring.PacketCaptureEnabled) ? FindTShark(config.Integrations.TSharkPath) : null;
                     string captureInterface = tshark == null ? null : FindTSharkInterface(tshark, selected.Adapter);
-                    DetectionHealth health = BuildHealth(tshark, captureInterface, selected);
+                    DetectionHealth health = BuildHealth(tshark, captureInterface, selected, config.Monitoring.ActiveArpProbeEnabled);
                     StrictPolicy policy = BuildPolicy(config);
 
-                    WriteLog(logPath, config.Output, "INFO", "Strict Evidence Detection Engine 3.2 iniciado. Historico/cache/ICMP nao podem produzir CONFIRMED.");
+                    WriteLog(logPath, config.Output, "INFO", "Strict Evidence Detection Engine 3.3 iniciado. Historico/cache/ICMP nao podem produzir CONFIRMED.");
                     WriteLog(logPath, config.Output, "INFO", "SelectedInterfaceName=" + selected.Adapter.Name + "; SelectedInterfaceIndex=" + selected.InterfaceIndex + "; SelectedInterfaceIPv4=" + selected.Address + "; SelectedInterfaceMac=" + selected.Mac + "; SelectedInterfaceCidr=" + selected.Cidr + "; SelectionReason=" + selected.SelectionReason + ".");
                     WriteLog(logPath, config.Output, health.StrictVerificationReady ? "INFO" : "WARN", "Capture Engine=" + health.Summary + "; Npcap=" + (health.NpcapAvailable ? "OK" : "INDISPONIVEL") + "; TShark=" + (health.TsharkAvailable ? "OK" : "INDISPONIVEL") + "; Strict Verification=" + (health.StrictVerificationReady ? "READY" : "MONITORING_LIMITED") + ".");
                     if (!selected.ConfiguredNetworkReachable) { WriteLog(logPath, config.Output, "WARN", "configured network not reachable through selected interface"); }
@@ -290,7 +290,7 @@ namespace IPConflictMonitor.Launcher
                         TSharkCapture discoveryCapture = null;
                         try
                         {
-                            if (!health.StrictVerificationReady && health.TsharkAvailable && health.NpcapAvailable && health.InterfaceReady)
+                            if (!health.StrictVerificationReady && health.TsharkAvailable && health.NpcapAvailable && health.InterfaceReady && config.Monitoring.ActiveArpProbeEnabled)
                             {
                                 health.StrictVerificationReady = true; health.LastError = String.Empty;
                                 WriteLog(logPath, config.Output, "INFO", "Tentando recuperar o mecanismo de captura antes do ciclo " + cycle + ".");
@@ -298,7 +298,8 @@ namespace IPConflictMonitor.Launcher
                             AddArpObservations(state.History, ReadArpTable(selected.InterfaceIndex), targetSet, excludedMacs, "NeighborCache", cycleId, cycle);
                             if (health.StrictVerificationReady)
                             {
-                                discoveryCapture = StartTSharkCapture(tshark, captureInterface, Math.Max(2, config.Monitoring.CaptureSeconds), null);
+                                int discoveryCaptureSeconds = CalculateDiscoveryCaptureSeconds(targets.Count, config.Monitoring.MaxConcurrentPings, config.Monitoring.PingTimeoutMs, config.Monitoring.CaptureWarmupMilliseconds, config.Monitoring.CaptureSeconds);
+                                discoveryCapture = StartTSharkCapture(tshark, captureInterface, discoveryCaptureSeconds, null);
                                 health.CaptureRunning = discoveryCapture != null;
                                 if (discoveryCapture == null) { health.StrictVerificationReady = false; health.LastError = "falha ao iniciar TShark"; state.Metrics.CaptureFailures++; }
                                 else if (config.Monitoring.CaptureWarmupMilliseconds > 0) { WaitCancelable(stopEvent, config.Monitoring.CaptureWarmupMilliseconds); }
@@ -306,9 +307,11 @@ namespace IPConflictMonitor.Launcher
 
                             if (config.Monitoring.PingSweepEnabled && !noPingSweep && !stopEvent.WaitOne(0))
                             {
+                                int refreshed = discoveryCapture != null && config.Monitoring.ActiveArpProbeEnabled ? ClearDynamicNeighbors(selected.InterfaceIndex, targetSet) : 0;
                                 int reachable = PingSweep(targets, config.Monitoring.PingTimeoutMs, config.Monitoring.MaxConcurrentPings);
                                 AddArpObservations(state.History, ReadArpTable(selected.InterfaceIndex), targetSet, excludedMacs, "NeighborCache", cycleId, cycle);
-                                WriteLog(logPath, config.Output, "DISCOVERY", "Ciclo=" + cycle + "; ICMP auxiliar=" + reachable + "/" + targets.Count + "; nenhuma decisao usa respostas ICMP.");
+                                RefreshGatewayMac(selected);
+                                WriteLog(logPath, config.Output, "DISCOVERY", "Ciclo=" + cycle + "; renovacoes ARP forçadas=" + refreshed + "; ICMP auxiliar=" + reachable + "/" + targets.Count + "; nenhuma decisao usa respostas ICMP.");
                             }
 
                             if (discoveryCapture != null)
@@ -357,12 +360,14 @@ namespace IPConflictMonitor.Launcher
             return new StrictPolicy { VerificationRounds = config.Monitoring.VerificationRounds, RequiredPositiveRounds = config.Monitoring.RequiredPositiveRounds, RequiredConfirmedCycles = config.Monitoring.RequiredConfirmedCycles, RequireCapturedArpRequest = true, RequireCorrelatedArpResponses = true, FailClosedWithoutCapture = true, DetectProxyArp = config.Monitoring.DetectProxyArp };
         }
 
-        private static DetectionHealth BuildHealth(string tshark, string captureInterface, SelectedNetwork selected)
+        private static DetectionHealth BuildHealth(string tshark, string captureInterface, SelectedNetwork selected, bool activeProbeEnabled)
         {
             bool tsharkAvailable = !String.IsNullOrWhiteSpace(tshark) && File.Exists(tshark);
             bool captureAvailable = tsharkAvailable && !String.IsNullOrWhiteSpace(captureInterface);
-            bool interfaceReady = selected != null && selected.ConfiguredNetworkReachable;
-            return new DetectionHealth { TsharkAvailable = tsharkAvailable, NpcapAvailable = captureAvailable, CaptureAvailable = captureAvailable, CaptureRunning = false, InterfaceReady = interfaceReady, StrictVerificationReady = captureAvailable && interfaceReady, LastError = captureAvailable && interfaceReady ? String.Empty : (!interfaceReady ? "configured network not reachable through selected interface" : "TShark/Npcap/interface de captura indisponivel") };
+            bool interfaceReady = selected != null && selected.ConfiguredNetworkReachable && StrictEvidenceDecisionEngine.NormalizeAndValidateMac(selected.Mac) != null;
+            bool strictReady = captureAvailable && interfaceReady && activeProbeEnabled;
+            string error = strictReady ? String.Empty : (!activeProbeEnabled ? "sondagem ARP ativa desabilitada" : (!interfaceReady ? "interface/CIDR/MAC local invalido" : "TShark/Npcap/interface de captura indisponivel"));
+            return new DetectionHealth { TsharkAvailable = tsharkAvailable, NpcapAvailable = captureAvailable, CaptureAvailable = captureAvailable, CaptureRunning = false, InterfaceReady = interfaceReady, StrictVerificationReady = strictReady, LastError = error };
         }
 
         private static List<NativeSnapshotRow> EvaluateCycle(NativeState state, SelectedNetwork selected, HashSet<string> targets, HashSet<string> excludedMacs, Dictionary<string, HashSet<string>> trustedPairs, HashSet<string> trustedVirtualIps, HashSet<string> trustedMacs, string tshark, string captureInterface, DetectionHealth health, StrictPolicy policy, MonitorConfiguration config, string cycleId, long cycle, EventWaitHandle stopEvent, string logPath)
@@ -395,8 +400,6 @@ namespace IPConflictMonitor.Launcher
                     CacheOnlyAmbiguity = ambiguous && currentEvents.Where(delegate(NativeObservation item) { return item.Source == "ARP-Packet"; }).Select(delegate(NativeObservation item) { return item.MAC; }).Distinct(StringComparer.OrdinalIgnoreCase).Count() <= 1,
                     InterfaceValidation = selected.ConfiguredNetworkReachable, Health = health, CurrentObservedMacs = currentMacs.ToList(), HistoricalMacs = historicalMacs.ToList(), ObservedGratuitousArp = currentEvents.Any(delegate(NativeObservation item) { return item.Gratuitous; })
                 };
-                evidence.TrustedPair = IsTrusted(ip, historicalMacs, trustedPairs, trustedVirtualIps, trustedMacs);
-                evidence.GatewayMacDetected = !String.IsNullOrWhiteSpace(selected.GatewayMac) && historicalMacs.Contains(selected.GatewayMac, StringComparer.OrdinalIgnoreCase);
                 evidence.PossibleProxyArp = historicalMacs.Any(delegate(string mac) { HashSet<string> ips; return macToIps.TryGetValue(mac, out ips) && ips.Count >= config.Monitoring.ProxyArpIpThreshold; });
 
                 if (verificationRequired)
@@ -404,13 +407,16 @@ namespace IPConflictMonitor.Launcher
                     WriteLog(logPath, config.Output, "VERIFY", "EvidenceId=" + evidenceId + "; iniciando Strict Verification para " + ip + ".");
                     if (health.StrictVerificationReady)
                     {
-                        evidence.Rounds = PerformStrictVerification(tshark, captureInterface, selected, ip, config, health, stopEvent, evidenceId, logPath);
+                        evidence.Rounds = PerformStrictVerification(tshark, captureInterface, selected, ip, config, excludedMacs, health, stopEvent, evidenceId, logPath);
                         state.Metrics.VerificationRequests += evidence.Rounds.Count;
                         state.Metrics.PositiveVerificationRounds += evidence.Rounds.Count(delegate(VerificationRoundEvidence round) { return round.PairKey != null && round.RequestCorrelationValid; });
                         evidence.CaptureFailure = evidence.Rounds.Any(delegate(VerificationRoundEvidence round) { return !round.CaptureHealthy; });
                     }
                 }
 
+                string[] decisionMacs = historicalMacs.Concat(evidence.Rounds.SelectMany(delegate(VerificationRoundEvidence round) { return round.ValidMacs; })).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                evidence.TrustedPair = IsTrusted(ip, decisionMacs, trustedPairs, trustedVirtualIps, trustedMacs);
+                evidence.GatewayMacDetected = !String.IsNullOrWhiteSpace(selected.GatewayMac) && decisionMacs.Contains(selected.GatewayMac, StringComparer.OrdinalIgnoreCase);
                 DetectionDecision decision = StrictEvidenceDecisionEngine.EvaluateConflict(evidence, policy, memory);
                 UpdateMetrics(state.Metrics, evidence, decision);
                 LogDecision(logPath, config.Output, evidence, decision);
@@ -421,27 +427,29 @@ namespace IPConflictMonitor.Launcher
             return rows.OrderBy(delegate(NativeSnapshotRow row) { return StatusRank(row.Status); }).ThenBy(delegate(NativeSnapshotRow row) { return IpToUInt32(IPAddress.Parse(row.IP)); }).ToList();
         }
 
-        private static List<VerificationRoundEvidence> PerformStrictVerification(string tshark, string captureInterface, SelectedNetwork selected, string targetIp, MonitorConfiguration config, DetectionHealth health, EventWaitHandle stopEvent, string evidenceId, string logPath)
+        private static List<VerificationRoundEvidence> PerformStrictVerification(string tshark, string captureInterface, SelectedNetwork selected, string targetIp, MonitorConfiguration config, HashSet<string> excludedMacs, DetectionHealth health, EventWaitHandle stopEvent, string evidenceId, string logPath)
         {
             var rounds = new List<VerificationRoundEvidence>();
             int count = Math.Max(1, config.Monitoring.VerificationRounds);
             for (int roundNumber = 1; roundNumber <= count && !stopEvent.WaitOne(0); roundNumber++)
             {
-                VerificationRoundEvidence round = CaptureVerificationRound(tshark, captureInterface, selected, targetIp, roundNumber, config, stopEvent);
+                VerificationRoundEvidence round = CaptureVerificationRound(tshark, captureInterface, selected, targetIp, roundNumber, config, excludedMacs, stopEvent);
                 rounds.Add(round);
                 if (!round.CaptureHealthy) { health.StrictVerificationReady = false; health.LastError = round.Error; }
                 if (round.RequestObserved) { WriteLog(logPath, config.Output, "ARP", "EvidenceId=" + evidenceId + "; Round=" + roundNumber + "; requisicao correlacionavel observada: Who has " + targetIp + "."); }
                 foreach (KeyValuePair<string, int> response in round.ResponsesByMac) { WriteLog(logPath, config.Output, "ARP", "EvidenceId=" + evidenceId + "; Round=" + roundNumber + "; " + targetIp + " is-at " + response.Key + "; respostas=" + response.Value + "."); }
-                WriteLog(logPath, config.Output, "VERIFY", "EvidenceId=" + evidenceId + "; Round " + roundNumber + "/" + count + ": " + (round.PairKey != null && round.RequestCorrelationValid ? "POSITIVO par=" + round.PairKey : "negativo/inconclusivo") + ".");
+                WriteLog(logPath, config.Output, "VERIFY", "EvidenceId=" + evidenceId + "; Round " + roundNumber + "/" + count + ": " + (round.PairKey != null && round.RequestCorrelationValid ? "POSITIVO respondentes=" + String.Join("+", round.ValidMacs) : "negativo/inconclusivo") + ".");
                 if (!round.CaptureHealthy) { break; }
                 if (roundNumber < count && config.Monitoring.ArpProbeRateLimitMs > 0) { WaitCancelable(stopEvent, config.Monitoring.ArpProbeRateLimitMs); }
             }
             return rounds;
         }
 
-        private static VerificationRoundEvidence CaptureVerificationRound(string tshark, string captureInterface, SelectedNetwork selected, string targetIp, int roundNumber, MonitorConfiguration config, EventWaitHandle stopEvent)
+        private static VerificationRoundEvidence CaptureVerificationRound(string tshark, string captureInterface, SelectedNetwork selected, string targetIp, int roundNumber, MonitorConfiguration config, HashSet<string> excludedMacs, EventWaitHandle stopEvent)
         {
-            var evidence = new VerificationRoundEvidence { Round = roundNumber, InterfaceValid = selected.ConfiguredNetworkReachable, CaptureHealthy = false };
+            string localMac = StrictEvidenceDecisionEngine.NormalizeAndValidateMac(selected.Mac);
+            var evidence = new VerificationRoundEvidence { Round = roundNumber, InterfaceValid = selected.ConfiguredNetworkReachable && localMac != null, CaptureHealthy = false };
+            if (localMac == null) { evidence.Error = "MAC local da interface selecionada e invalido"; return evidence; }
             int durationSeconds = Math.Max(2, (int)Math.Ceiling((config.Monitoring.CaptureWarmupMilliseconds + config.Monitoring.ArpResponseWindowMs + 750) / 1000.0));
             using (TSharkCapture capture = StartTSharkCapture(tshark, captureInterface, durationSeconds, targetIp))
             {
@@ -456,14 +464,14 @@ namespace IPConflictMonitor.Launcher
                 evidence.CaptureHealthy = completed && exitCode == 0;
                 evidence.Error = evidence.CaptureHealthy ? null : (String.IsNullOrWhiteSpace(error) ? "captura interrompida" : FirstLine(error));
                 List<ArpPacket> packets = capture.Lines.Select(ParseArpPacket).Where(delegate(ArpPacket packet) { return packet != null; }).OrderBy(delegate(ArpPacket packet) { return packet.TimeUtc; }).ToList();
-                ArpPacket request = packets.FirstOrDefault(delegate(ArpPacket packet) { return packet.Opcode == 1 && String.Equals(packet.SourceIp, selected.Address.ToString(), StringComparison.OrdinalIgnoreCase) && String.Equals(packet.TargetIp, targetIp, StringComparison.OrdinalIgnoreCase) && packet.TimeUtc >= probeUtc.AddSeconds(-1); });
+                ArpPacket request = packets.FirstOrDefault(delegate(ArpPacket packet) { return packet.Opcode == 1 && String.Equals(packet.SourceIp, selected.Address.ToString(), StringComparison.OrdinalIgnoreCase) && String.Equals(packet.TargetIp, targetIp, StringComparison.OrdinalIgnoreCase) && String.Equals(StrictEvidenceDecisionEngine.NormalizeAndValidateMac(packet.SourceMac), localMac, StringComparison.OrdinalIgnoreCase) && packet.TimeUtc >= probeUtc.AddMilliseconds(-100) && packet.TimeUtc <= probeUtc.AddMilliseconds(Math.Max(1000, config.Monitoring.ArpResponseWindowMs)); });
                 evidence.RequestObserved = request != null;
                 if (request != null)
                 {
                     evidence.RequestTimestampUtc = request.TimeUtc; evidence.ResponseWindowStartUtc = request.TimeUtc; evidence.ResponseWindowEndUtc = request.TimeUtc.AddMilliseconds(config.Monitoring.ArpResponseWindowMs);
-                    foreach (ArpPacket reply in packets.Where(delegate(ArpPacket packet) { return packet.Opcode == 2 && packet.TimeUtc >= evidence.ResponseWindowStartUtc && packet.TimeUtc <= evidence.ResponseWindowEndUtc && String.Equals(packet.SourceIp, targetIp, StringComparison.OrdinalIgnoreCase) && String.Equals(packet.TargetIp, selected.Address.ToString(), StringComparison.OrdinalIgnoreCase); }))
+                    foreach (ArpPacket reply in packets.Where(delegate(ArpPacket packet) { return packet.Opcode == 2 && packet.TimeUtc >= evidence.ResponseWindowStartUtc && packet.TimeUtc <= evidence.ResponseWindowEndUtc && String.Equals(packet.SourceIp, targetIp, StringComparison.OrdinalIgnoreCase) && String.Equals(packet.TargetIp, selected.Address.ToString(), StringComparison.OrdinalIgnoreCase) && String.Equals(StrictEvidenceDecisionEngine.NormalizeAndValidateMac(packet.TargetMac), localMac, StringComparison.OrdinalIgnoreCase); }))
                     {
-                        string mac = StrictEvidenceDecisionEngine.NormalizeAndValidateMac(reply.SourceMac); if (mac == null) { continue; }
+                        string mac = StrictEvidenceDecisionEngine.NormalizeAndValidateMac(reply.SourceMac); if (mac == null || String.Equals(mac, localMac, StringComparison.OrdinalIgnoreCase) || excludedMacs.Contains(mac)) { continue; }
                         if (!evidence.CorrelatedMacs.Contains(mac, StringComparer.OrdinalIgnoreCase)) { evidence.CorrelatedMacs.Add(mac); }
                         int responses; evidence.ResponsesByMac.TryGetValue(mac, out responses); evidence.ResponsesByMac[mac] = responses + 1;
                     }
@@ -476,14 +484,15 @@ namespace IPConflictMonitor.Launcher
 
         private static NativeSnapshotRow BuildSnapshotRow(List<NativeObservation> events, string[] currentMacs, string[] historicalMacs, SelectedNetwork selected, ConflictEvidence evidence, DetectionDecision decision)
         {
-            string[] displayMacs = currentMacs.Length > 0 ? currentMacs : historicalMacs;
+            string[] proofMacs = evidence.Rounds.Where(delegate(VerificationRoundEvidence round) { return round.RequestCorrelationValid; }).SelectMany(delegate(VerificationRoundEvidence round) { return round.ValidMacs; }).GroupBy(delegate(string mac) { return mac; }, StringComparer.OrdinalIgnoreCase).Where(delegate(IGrouping<string, string> group) { return group.Count() >= decision.RequiredRounds; }).Select(delegate(IGrouping<string, string> group) { return group.Key; }).OrderBy(delegate(string mac) { return mac; }).ToArray();
+            string[] displayMacs = decision.State == StrictDetectionState.CONFIRMED && proofMacs.Length >= 2 ? proofMacs : (currentMacs.Length > 0 ? currentMacs : historicalMacs);
             int transitions = 0; string previous = null;
             foreach (NativeObservation item in events) { if (previous != null && !String.Equals(previous, item.MAC, StringComparison.OrdinalIgnoreCase)) { transitions++; } previous = item.MAC; }
             int score = Math.Min(100, decision.PositiveRounds * 30 + decision.ConfirmedCycles * 20 + (decision.RequestCorrelationValid ? 10 : 0));
             return new NativeSnapshotRow
             {
                 TimestampUtc = DateTime.UtcNow, IP = evidence.TargetIp, Hostname = String.Empty, Status = decision.State.ToString(), MACs = String.Join(", ", displayMacs),
-                MACDetails = decision.State == StrictDetectionState.CONFIRMED ? decision.MacA + " + " + decision.MacB : (historicalMacs.Length > 1 ? "Mudanca de associacao observada — conflito nao confirmado" : "Associacao atual sem prova de conflito"),
+                MACDetails = decision.State == StrictDetectionState.CONFIRMED ? displayMacs.Length + " MACs com prova estrita: " + String.Join(" + ", displayMacs) : (historicalMacs.Length > 1 ? "Mudanca de associacao observada — conflito nao confirmado" : "Associacao atual sem prova de conflito"),
                 MacCount = displayMacs.Length, Observations = events.Count, Transitions = transitions,
                 DirectArpMacCount = events.Where(delegate(NativeObservation item) { return item.Source == "ARP-Packet"; }).Select(delegate(NativeObservation item) { return item.MAC; }).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
                 ActiveProbeMacCount = evidence.Rounds.SelectMany(delegate(VerificationRoundEvidence round) { return round.CorrelatedMacs; }).Distinct(StringComparer.OrdinalIgnoreCase).Count(), MappingMismatch = evidence.TrustedPair,
@@ -618,6 +627,15 @@ namespace IPConflictMonitor.Launcher
             DateTime now = DateTime.UtcNow; foreach (ArpEntry entry in entries) { string mac = StrictEvidenceDecisionEngine.NormalizeAndValidateMac(entry.MAC); if (!targets.Contains(entry.IP) || mac == null || excludedMacs.Contains(mac)) { continue; } history.Add(new NativeObservation { TimeUtc = now, IP = entry.IP, MAC = mac, Source = source, CycleId = cycleId, Cycle = cycle }); }
         }
 
+        private static int CalculateDiscoveryCaptureSeconds(int targetCount, int concurrency, int timeoutMs, int warmupMs, int configuredSeconds)
+        {
+            int workers = Math.Max(1, Math.Min(256, concurrency));
+            long batches = targetCount <= 0 ? 1L : ((long)targetCount + workers - 1L) / workers;
+            long estimatedMs = Math.Max(0, warmupMs) + batches * Math.Max(50, timeoutMs) + 1500L;
+            int estimatedSeconds = (int)Math.Min(120L, Math.Max(2L, (estimatedMs + 999L) / 1000L));
+            return Math.Max(Math.Max(2, configuredSeconds), estimatedSeconds);
+        }
+
         private static int PingSweep(List<string> targets, int timeout, int concurrency)
         {
             int reachable = 0; var options = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Math.Min(256, concurrency)) };
@@ -697,7 +715,25 @@ namespace IPConflictMonitor.Launcher
         private static string FirstValue(string value) { if (String.IsNullOrWhiteSpace(value)) { return String.Empty; } return value.Split(',')[0].Trim(); }
         private static string FirstLine(string value) { return (value ?? String.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? String.Empty; }
 
-        private static void ClearSingleNeighbor(int interfaceIndex, string targetIp) { foreach (ArpEntry entry in ReadArpTable(interfaceIndex)) { if (!String.Equals(entry.IP, targetIp, StringComparison.OrdinalIgnoreCase)) { continue; } MibIpNetRow row = entry.NativeRow; DeleteIpNetEntry(ref row); } }
+        private static int ClearDynamicNeighbors(int interfaceIndex, HashSet<string> targetIps)
+        {
+            int cleared = 0;
+            foreach (ArpEntry entry in ReadArpTable(interfaceIndex))
+            {
+                if (targetIps == null || !targetIps.Contains(entry.IP) || entry.NativeRow.dwType != 3) { continue; }
+                MibIpNetRow row = entry.NativeRow;
+                if (DeleteIpNetEntry(ref row) == 0) { cleared++; }
+            }
+            return cleared;
+        }
+        private static void ClearSingleNeighbor(int interfaceIndex, string targetIp) { ClearDynamicNeighbors(interfaceIndex, new HashSet<string>(new[] { targetIp }, StringComparer.OrdinalIgnoreCase)); }
+        private static void RefreshGatewayMac(SelectedNetwork selected)
+        {
+            if (selected == null || selected.Gateway == null) { return; }
+            string gatewayIp = selected.Gateway.ToString();
+            string refreshed = ReadArpTable(selected.InterfaceIndex).Where(delegate(ArpEntry entry) { return String.Equals(entry.IP, gatewayIp, StringComparison.OrdinalIgnoreCase); }).Select(delegate(ArpEntry entry) { return StrictEvidenceDecisionEngine.NormalizeAndValidateMac(entry.MAC); }).FirstOrDefault(delegate(string mac) { return mac != null; });
+            if (!String.IsNullOrWhiteSpace(refreshed)) { selected.GatewayMac = refreshed; }
+        }
         private static void SendArpProbe(string targetIp, string sourceIp) { byte[] buffer = new byte[8]; int length = buffer.Length; uint destination = BitConverter.ToUInt32(IPAddress.Parse(targetIp).GetAddressBytes(), 0); uint source = BitConverter.ToUInt32(IPAddress.Parse(sourceIp).GetAddressBytes(), 0); SendARP(destination, source, buffer, ref length); }
 
         private static Dictionary<string, HashSet<string>> BuildTrustedPairs(string[] pairs)
@@ -769,4 +805,3 @@ namespace IPConflictMonitor.Launcher
         private static void WaitCancelable(EventWaitHandle stopEvent, int milliseconds) { if (milliseconds <= 0) { return; } stopEvent.WaitOne(milliseconds); }
     }
 }
-

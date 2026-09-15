@@ -50,7 +50,7 @@ Describe 'Strict Evidence policy' {
 
     It 'requires capture correlation repeated rounds and cycles' {
         $source = Get-Content -LiteralPath $script:strictPath -Raw
-        foreach ($marker in @('StrictVerificationReady','RequestObserved','RequestCorrelationValid','PositiveRounds','SameMacPairAcrossRounds','ConsecutivePositiveCycles','PossibleProxyArp','TrustedPair','InterfaceValidation')) {
+        foreach ($marker in @('StrictVerificationReady','RequestObserved','RequestCorrelationValid','PositiveRounds','SameMacPairAcrossRounds','PairCandidates','ConsecutivePositiveCycles','PossibleProxyArp','TrustedPair','InterfaceValidation')) {
             Assert-StrictMatch $source $marker "required evidence marker $marker is present"
         }
     }
@@ -76,6 +76,29 @@ Describe 'Strict Evidence policy' {
         Assert-StrictMatch $source 'ResponseWindowStartUtc' 'response window start is tracked'
         Assert-StrictMatch $source 'ResponseWindowEndUtc' 'response window end is tracked'
         Assert-StrictMatch $source 'String\.Equals\(packet\.TargetIp, selected\.Address' 'reply target is correlated to selected interface'
+    }
+
+    It 'forces fresh ARP discovery without deleting static neighbors' {
+        $source = Get-Content -LiteralPath $script:nativePath -Raw
+        Assert-StrictMatch $source 'ClearDynamicNeighbors' 'active discovery refresh is present'
+        Assert-StrictMatch $source 'entry\.NativeRow\.dwType != 3' 'only dynamic neighbor entries are refreshed'
+        Assert-StrictMatch $source 'discoveryCapture != null.*ClearDynamicNeighbors' 'refresh runs only while discovery capture exists'
+        Assert-StrictMatch $source 'CalculateDiscoveryCaptureSeconds' 'capture window adapts to target count and timeout'
+        Assert-StrictMatch $source 'Math\.Min\(120L' 'adaptive capture window remains bounded'
+    }
+
+    It 'binds requests and replies to the selected local MAC' {
+        $source = Get-Content -LiteralPath $script:nativePath -Raw
+        Assert-StrictMatch $source 'packet\.SourceMac\), localMac' 'captured request source MAC is local'
+        Assert-StrictMatch $source 'packet\.TargetMac\), localMac' 'captured reply target MAC is local'
+        Assert-StrictMatch $source 'excludedMacs\.Contains\(mac\)' 'excluded MACs cannot enter strict proof'
+    }
+
+    It 'supports a stable conflict pair among three or more responders' {
+        $source = Get-Content -LiteralPath $script:strictPath -Raw
+        Assert-StrictMatch $source 'PairCandidates' 'all responder pairs are generated'
+        Assert-StrictMatch $source 'SelectMany.*PairCandidates' 'stable pair counts span repeated rounds'
+        Assert-StrictMatch $source 'three responders with stable pair' 'three-responder self-test is registered'
     }
 
     It 'limits process execution and ARP probe rate' {
@@ -119,6 +142,10 @@ Describe 'Strict Evidence configuration and build gate' {
         Assert-StrictMatch $build 'MinMacTransitions' 'legacy marker is blocked'
         Assert-StrictMatch $build 'status = "SUSPECT"' 'SUSPECT marker is blocked'
         Assert-StrictMatch $build 'exatamente um caminho decisorio' 'single decision path is enforced'
+        Assert-StrictMatch $build 'ClearDynamicNeighbors' 'active discovery refresh is gated'
+        Assert-StrictMatch $build 'CalculateDiscoveryCaptureSeconds' 'adaptive capture duration is gated'
+        Assert-StrictMatch $build 'packet.TargetMac' 'local MAC correlation is gated'
+        Assert-StrictMatch $build 'PairCandidates' 'multi-responder pair logic is gated'
     }
 }
 
@@ -128,9 +155,9 @@ Describe 'Compiled Strict Evidence executable' {
         $script:exe = Join-Path $script:projectRoot 'dist\IPConflictMonitor.exe'
     }
 
-    It 'reports version 3.2.2.0' {
+    It 'reports version 3.3.0.0' {
         Assert-StrictTrue (Test-Path -LiteralPath $script:exe) 'compiled executable exists'
-        Assert-StrictEqual (Get-Item -LiteralPath $script:exe).VersionInfo.FileVersion '3.2.2.0' 'compiled executable version is correct'
+        Assert-StrictEqual (Get-Item -LiteralPath $script:exe).VersionInfo.FileVersion '3.3.0.0' 'compiled executable version is correct'
     }
 
     It 'passes all synthetic detection scenarios' {
@@ -144,7 +171,7 @@ Describe 'Compiled Strict Evidence executable' {
         $bytes = [IO.File]::ReadAllBytes($script:exe)
         $ascii = [Text.Encoding]::ASCII.GetString($bytes)
         $unicode = [Text.Encoding]::Unicode.GetString($bytes)
-        foreach ($marker in @('MONITORING_LIMITED','UNVERIFIED','STRICT_PROOF','-SelfTestDetection','EvidenceHash')) {
+        foreach ($marker in @('MONITORING_LIMITED','UNVERIFIED','STRICT_PROOF','-SelfTestDetection','EvidenceHash','PairCandidates','ClearDynamicNeighbors')) {
             Assert-StrictTrue ($ascii.Contains($marker) -or $unicode.Contains($marker)) "binary marker $marker is present"
         }
     }

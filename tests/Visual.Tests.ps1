@@ -31,7 +31,7 @@ Describe 'Strict Evidence field interface' {
         }
     }
 
-    It 'renders a full-size version 3.2 dashboard preview' {
+    It 'renders a full-size version 3.3 dashboard preview' {
         Add-Type -AssemblyName System.Drawing
         $preview = Join-Path $script:projectRoot 'dist\IPConflictMonitor-dashboard.png'
         Assert-VisualTrue (Test-Path -LiteralPath $preview) 'dashboard preview exists'
@@ -43,6 +43,6 @@ Describe 'Strict Evidence field interface' {
         finally {
             $image.Dispose()
         }
-        Assert-VisualMatch (Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw) 'FIELD EDITION 3.2' 'field edition label is present'
+        Assert-VisualMatch (Get-Content -LiteralPath (Join-Path $script:projectRoot 'launcher\IPConflictMonitor.NeonGui.cs') -Raw) 'FIELD EDITION 3.3' 'field edition label is present'
     }
 }

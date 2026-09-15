@@ -324,7 +324,7 @@ namespace IPConflictMonitor.Launcher
         {
             var request = (HttpWebRequest)WebRequest.Create(url);
             request.Method = "GET";
-            request.UserAgent = "IPConflictMonitor-Updater/3.1";
+            request.UserAgent = "IPConflictMonitor-Updater/3.3";
             request.Accept = "application/vnd.github+json";
             request.Timeout = 12000;
             request.ReadWriteTimeout = 12000;
@@ -336,7 +336,7 @@ namespace IPConflictMonitor.Launcher
         {
             using (var client = new WebClient())
             {
-                client.Headers[HttpRequestHeader.UserAgent] = "IPConflictMonitor-Updater/3.1";
+                client.Headers[HttpRequestHeader.UserAgent] = "IPConflictMonitor-Updater/3.3";
                 client.DownloadFile(url, destination);
             }
         }
@@ -415,5 +415,4 @@ namespace IPConflictMonitor.Launcher
         }
     }
 }
-
 
